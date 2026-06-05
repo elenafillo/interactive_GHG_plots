@@ -1,0 +1,4 @@
+data/fluxes/*
+data/obs/*
+data/fps/*
+plotting_tools/__pycache__/
