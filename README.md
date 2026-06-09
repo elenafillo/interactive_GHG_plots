@@ -28,5 +28,5 @@ Belgium, Netherlands, Germany and the north of France produce a lot of methane!
 ![example2](figs/high_obs.png)
 
 
-In this case, the sensitivity plume is only over England, so the air is polluted, but not as much as when it comes from Europe.
+In this case, the sensitivity plume is only over the UK and Ireland, so the air is polluted, but not as much as when it comes from Europe.
 ![example3](figs/medium_obs.png)
