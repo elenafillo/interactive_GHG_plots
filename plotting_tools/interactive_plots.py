@@ -18,7 +18,7 @@ _ACCENT = "#5BE8C8"      # teal accent for the slider
 def plot_timeseries(ax, hourly_means, time_idx=None, subset=None,site=None):
     """
     Draw (or redraw) the CH₄ timeseries on *ax* with a marker at *time_idx*.
- 
+
     Parameters
     ----------
     ax           : matplotlib Axes
@@ -26,6 +26,10 @@ def plot_timeseries(ax, hourly_means, time_idx=None, subset=None,site=None):
     time_idx     : int  – highlighted point
     subset       : (start_idx, end_idx) tuple controlling the visible window
     site         : str, optional – site name for the plot title
+
+    Returns
+    -------
+    marker_sc : matplotlib PathCollection (the selected-timestep scatter dot), or None
     """
     ax.cla()
     #ax.set_facecolor(_PANEL)
@@ -42,16 +46,16 @@ def plot_timeseries(ax, hourly_means, time_idx=None, subset=None,site=None):
         linewidth=1.4,
         label="CH₄",
     )
+    marker_sc = None
     if time_idx is not None:
         # if its an int, extract the corresponding time value for the title
         if isinstance(time_idx, int):
                 timestamp = str(hourly_means.time.values[time_idx])
         else:
                 timestamp = str(time_idx)
-        print(timestamp)
         # check that timestamp is within plotted, if not, skip the marker
         try:
-            ax.scatter(
+            marker_sc = ax.scatter(
                 ts.time.sel(time=timestamp),
                 ts.ch4.sel(time=timestamp),
                 color=_RED,
@@ -63,19 +67,20 @@ def plot_timeseries(ax, hourly_means, time_idx=None, subset=None,site=None):
             )
         except KeyError:
             pass
-    
+
     ax.set_xlabel("Date/Time (UTC)", fontsize=9, color=_PANEL)
     ax.set_ylabel("CH₄ (ppb)",  fontsize=9, color=_PANEL)
     ax.set_title(f"Observed CH₄ Timeseries" if site is None else f"Observed CH₄ Timeseries at {site}", fontsize=10, fontweight="bold", color=_PANEL)
     ax.legend(fontsize=8, framealpha=0.3, facecolor=_BG, edgecolor=_PANEL,
               labelcolor=_PANEL)
     ax.grid(True, alpha=0.15, linestyle="--", color=_PANEL)
- 
+
     for spine in ax.spines.values():
         spine.set_edgecolor(_PANEL)
         spine.set_alpha(0.4)
- 
+
     ax.tick_params(colors=_PANEL, labelsize=8)
+    return marker_sc
  
  
 
@@ -100,9 +105,7 @@ def plot_footprint(ax, fps, hourly_means, time_idx, slice_dict=None, release_coo
     #ax.set_facecolor(_PANEL)
  
     fp = fps.fp.isel(time=time_idx)
-    if slice_dict is not None:
-        fp = fp.sel(**slice_dict)
-    
+
     cmap = plt.get_cmap(cmap)
     colors = cmap(np.linspace(0, 1, 256))
     # colors[:50, 3] = 0.6
@@ -113,12 +116,17 @@ def plot_footprint(ax, fps, hourly_means, time_idx, slice_dict=None, release_coo
     
     alpha_cmap = mcolors.ListedColormap(colors)
     
-    np.log10(fp).plot(
+    mesh = np.log10(fp).plot(
         ax=ax,
         transform=ccrs.PlateCarree(),
         cmap=alpha_cmap,
         add_colorbar=False,
     )
+
+    if slice_dict is not None:
+        lat_s = slice_dict["lat"]
+        lon_s = slice_dict["lon"]
+        ax.set_extent([lon_s.start, lon_s.stop, lat_s.start, lat_s.stop], crs=ccrs.PlateCarree())
 
     if release_coords is not None:
         ax.scatter(
@@ -134,12 +142,12 @@ def plot_footprint(ax, fps, hourly_means, time_idx, slice_dict=None, release_coo
         )
         ax.legend(fontsize=8, framealpha=0.3, facecolor=_BG, edgecolor=_PANEL,
                   labelcolor=_PANEL, loc="upper right")
- 
+
     ax.coastlines(linewidth=0.8, color=_MUTED)
- 
+
     time_str = str(hourly_means.time.values[time_idx])[:13]
     label    = "Zoomed" if slice_dict is not None else "Full Domain"
- 
+
     ax.set_title(
         f"{label}  ·  {time_str} UTC",
         fontsize=9,
@@ -147,6 +155,7 @@ def plot_footprint(ax, fps, hourly_means, time_idx, slice_dict=None, release_coo
         color=_TEXT,
         pad=5,
     )
+    return mesh
 
 
 # ── Main figure ────────────────────────────────────────────────────────────────
@@ -157,9 +166,9 @@ def make_figure(fps, hourly_means, slice_uk, subset=None, time_idx=0, interactiv
  
     Layout
     ------
-    ┌──────────────┬──────────────┐
-    │  Zoomed FP   │  Full FP     │   ← row 0 : cartopy map axes
-    ├──────────────┴──────────────┤
+    ┌─────────────────────────────┐
+    │          Zoomed FP          │   ← row 0 : cartopy map axes
+    ├─────────────────────────────┤
     │       CH₄ timeseries        │   ← row 1 : standard axes
     └─────────────────────────────┘
           [ slider ]  ← interactive=True only
@@ -202,20 +211,18 @@ def make_figure(fps, hourly_means, slice_uk, subset=None, time_idx=0, interactiv
     )
  
     # ── Grid ────────────────────────────────────────────────────────────────
-    gs = gridspec.GridSpec(2, 2, figure=fig, height_ratios=[1.4, 1], width_ratios=[1.1, 1])
- 
+    gs = gridspec.GridSpec(2, 1, figure=fig, height_ratios=[1.4, 1])
+
     ax_zoom = fig.add_subplot(gs[0, 0], projection=ccrs.PlateCarree())
-    ax_full = fig.add_subplot(gs[0, 1], projection=ccrs.PlateCarree())
-    ax_ts   = fig.add_subplot(gs[1, :])
+    ax_ts   = fig.add_subplot(gs[1, 0])
  
     # ── Initial draw ────────────────────────────────────────────────────────
-    plot_footprint(
+    mesh_zoom = plot_footprint(
         ax_zoom, fps, hourly_means, time_idx,
         slice_dict={"lat": slice_uk["lat"], "lon": slice_uk["lon"]},
         release_coords=release_coords, site=site
     )
-    plot_footprint(ax_full, fps, hourly_means, time_idx, release_coords=release_coords, site=site)
-    plot_timeseries(ax_ts, hourly_means, time_idx, subset, site=site)
+    marker_sc = plot_timeseries(ax_ts, hourly_means, time_idx, subset, site=site)
  
     # ── Title ───────────────────────────────────────────────────────────────
     # fig.suptitle(
@@ -244,18 +251,52 @@ def make_figure(fps, hourly_means, slice_uk, subset=None, time_idx=0, interactiv
     slider.label.set_fontsize(9)
     slider.valtext.set_color(_TEXT)
     slider.valtext.set_fontsize(9)
- 
+
+    # Pre-compute static data used every tick
+    _cmap = plt.get_cmap("Reds")
+    _alpha_cmap = mcolors.ListedColormap(_cmap(np.linspace(0, 1, 256)))
+
+    if subset is not None and isinstance(subset[0], (int, np.integer)):
+        _subset_slice = (hourly_means.time.values[subset[0]], hourly_means.time.values[subset[1]])
+    else:
+        _subset_slice = subset
+    ts_fixed = hourly_means.sel(time=slice(*_subset_slice)) if _subset_slice is not None else hourly_means
+
+    _ts_title = f"Observed CH₄ Timeseries" if site is None else f"Observed CH₄ Timeseries at {site}"
+
     def update(val):
+        nonlocal mesh_zoom, marker_sc
         t = int(slider.val)
-        plot_footprint(
-            ax_zoom, fps, hourly_means, t,
-            slice_dict={"lat": slice_uk["lat"], "lon": slice_uk["lon"]},
-            release_coords=release_coords
+        time_str = str(hourly_means.time.values[t])[:13]
+
+        # Swap only the pcolormesh layer — coastlines/scatter/legend stay
+        fp_zoom = fps.fp.isel(time=t)
+        mesh_zoom.remove()
+        mesh_zoom = np.log10(fp_zoom).plot(
+            ax=ax_zoom, transform=ccrs.PlateCarree(), cmap=_alpha_cmap, add_colorbar=False
         )
-        plot_footprint(ax_full, fps, hourly_means, t, release_coords=release_coords, site=site)
-        plot_timeseries(ax_ts, hourly_means, t, subset, site=site)
+        ax_zoom.set_extent(
+            [slice_uk["lon"].start, slice_uk["lon"].stop, slice_uk["lat"].start, slice_uk["lat"].stop],
+            crs=ccrs.PlateCarree(),
+        )
+        ax_zoom.set_title(f"Zoomed  ·  {time_str} UTC", fontsize=9, fontweight="bold", color=_TEXT, pad=5)
+
+        # Swap only the red marker — line/labels/grid stay
+        if marker_sc is not None:
+            marker_sc.remove()
+        timestamp = str(hourly_means.time.values[t])
+        try:
+            marker_sc = ax_ts.scatter(
+                ts_fixed.time.sel(time=timestamp),
+                ts_fixed.ch4.sel(time=timestamp),
+                color=_RED, zorder=5, s=70, edgecolors="white", linewidths=0.6,
+            )
+        except KeyError:
+            marker_sc = None
+        ax_ts.set_title(_ts_title, fontsize=10, fontweight="bold", color=_PANEL)
+
         fig.canvas.draw_idle()
- 
+
     slider.on_changed(update)
  
     return fig, slider
