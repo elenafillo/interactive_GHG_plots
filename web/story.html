@@ -43,15 +43,21 @@ if (location.protocol === 'file:') {
     <canvas id="ts" aria-label="How much methane the mast smelled through February"></canvas>
   </div>
 
+  <!-- Its own corner, not part of the HUD. Sharing the caption's box meant the
+       caption moved every time the bar came or went -- the HUD is anchored at
+       the bottom, so the bar appearing shoved the text up over the mast. The
+       caption has to sit still: it is the one thing being read.
+
+       Labels top to bottom, so they read in the direction the fill moves. -->
+  <div class="meter" id="meter" hidden>
+    <span class="meter-label">a lot</span>
+    <span class="meter-track"><i id="meterFill"></i></span>
+    <span class="meter-label">a little</span>
+    <span class="meter-num" id="meterNum"></span>
+  </div>
+
   <div class="hud">
     <p class="caption" id="caption"></p>
-
-    <div class="meter" id="meter" hidden>
-      <span class="meter-label">a little</span>
-      <span class="meter-track"><i id="meterFill"></i></span>
-      <span class="meter-label">a lot</span>
-      <span class="meter-num" id="meterNum"></span>
-    </div>
   </div>
 
   <p class="stamp" id="stamp"></p>
@@ -61,8 +67,17 @@ if (location.protocol === 'file:') {
     <button id="next" aria-label="Next slide">→</button>
   </div>
 
-  <!-- Presenter-only. Hidden until T, and the only chrome that shows numbers. -->
-  <div class="scrubber" id="scrubber" hidden>
+  <!-- Presenter-only, and the only chrome that shows numbers.
+
+       No `hidden` attribute, deliberately. It used to carry one and be
+       "hidden until T" -- but `[hidden]` did nothing against the stylesheet's
+       `display: flex`, so for its whole life the panel has been on screen from
+       the first slide and T has done nothing. The CSS is fixed now, which
+       means restoring the attribute here would change what the deck opens on.
+       So the shipped behaviour is kept as it has actually been: up by default,
+       and H puts it away when it is in the road. Add `hidden` back to this tag
+       to make it presenter-only for real. -->
+  <div class="scrubber" id="scrubber">
     <input id="scrubRange" type="range" min="0" max="0" value="0" step="1"
            aria-label="Move this slide's moment">
     <span class="scrub-time" id="scrubTime">—</span>

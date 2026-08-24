@@ -26,7 +26,7 @@ import { WindLayer, viewFromCamera } from '../wind.js';
 import { C, SOURCE_DISPLAY, footprintLUT } from '../palette.js';
 import { MapView } from './mapview.js';
 import {
-  FRAMES, SHOW_RECORD_LOW, RELEASES, resolveFrames, buildBeats, toSlides, resolvePlay,
+  FRAMES, SMELL, SHOW_RECORD_LOW, RELEASES, resolveFrames, buildBeats, toSlides, resolvePlay,
 } from './beats.js';
 
 const $ = (id) => document.getElementById(id);
@@ -170,8 +170,11 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
   let dirty = true;
 
   // ---- chrome -----------------------------------------------------------
-  const obsMin = data.meta.species[0].obsMin ?? 1900;
-  const obsMax = data.meta.species[0].obsMax ?? 2200;
+  // How full the bar is: the reading's height above clean air, as a share of
+  // SMELL.span. The month's own min and max are deliberately not used -- see
+  // SMELL in beats.js for why, and for where these two numbers came from.
+  const smellOf = (v) => (v == null ? 0
+    : Math.max(0, Math.min(1, (v - SMELL.base) / SMELL.span)));
 
   function paintDots() {
     const el = $('dots');
@@ -190,15 +193,22 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
     });
   }
 
-  /** Reading as a share of the month's range: no numbers, just a little to a lot. */
+  /** How much is being smelled, as a height: nothing to a lot, no numbers. */
   function paintMeter(stop) {
-    const show = stop.layers.footprint > 0 && !stop.chart;
+    // Only where there is air on screen to be smelling. The bar answers "how
+    // much of *this* can the mast smell", so on the sources card -- guessed
+    // emissions, no footprint, no hour attached -- it has nothing to say and
+    // would be read as a comment on the guess. `stop.chart` is no longer part
+    // of the test: the last act dropped its chart so this could carry the month.
+    const show = stop.layers.footprint > 0;
     $('meter').hidden = !show;
     if (!show) return;
     const v = data.current.obs ? data.current.obs[state.t] : null;
-    const f = v == null ? 0 : (v - obsMin) / Math.max(1e-9, obsMax - obsMin);
-    $('meterFill').style.width = `${Math.round(Math.max(0, Math.min(1, f)) * 100)}%`;
-    $('meterNum').textContent = v == null ? '' : `${Math.round(v)}`;
+    $('meterFill').style.height = `${Math.round(smellOf(v) * 100)}%`;
+    // Presenter-only, behind N: the reading, then what the bar is actually
+    // drawing. Two numbers are allowed here and nowhere else on screen.
+    $('meterNum').textContent = v == null ? ''
+      : `${Math.round(v)} · +${Math.round(Math.max(0, v - SMELL.base))}`;
   }
 
   function paintChrome() {
@@ -477,7 +487,12 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
     else if (k === 'ArrowLeft' || k === 'PageUp') { e.preventDefault(); prev(); }
     else if (k === '.') { state.playing = !state.playing; if (state.playing && play && state.t >= play.to) { holdsLeft = [...play.holdAt]; setT(play.from); } }
     else if (k === 'r' || k === 'R') { enter(false); }
-    else if (k === 't' || k === 'T') { toggleScrubber(); }
+    // H and T are the same switch, and that is on purpose for now. T was always
+    // the documented key and is in the notes; H is the one you reach for when
+    // the panel is over the map mid-sentence, because it is what "hide" is
+    // called everywhere else. Both are in the tuning-keys audit; whichever
+    // survives, the other is one line.
+    else if (k === 't' || k === 'T' || k === 'h' || k === 'H') { toggleScrubber(); }
     else if (k === 'n' || k === 'N') { document.body.classList.toggle('show-number'); }
     // Square cells vs a smoothed field, on the sources card. A judgement to make
     // on the screen you are presenting on, not in the source.

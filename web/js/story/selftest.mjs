@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import {
-  FRAMES, SHOW_RECORD_LOW, MAX_CAPTION_WORDS, BANNED_WORDS,
+  FRAMES, SMELL, SHOW_RECORD_LOW, MAX_CAPTION_WORDS, BANNED_WORDS,
   countWords, bannedIn, resolveFrames, buildBeats, toSlides, resolvePlay,
   DEFAULT_LAYERS,
 } from './beats.js';
@@ -324,12 +324,65 @@ check('every act has at least one stop', acts.every((a) => a.stops.length > 0));
 check('act ids are unique', new Set(acts.map((a) => a.id)).size === acts.length);
 check('slides are contiguous across acts',
   slides.every((s, k) => k === 0 || s.actIndex >= slides[k - 1].actIndex));
-check('exactly one act shows the chart', acts.filter((a) => a.chart).length === 1);
-check('the record-low flag is respected', (() => {
-  const on = toSlides(buildBeats(FRAMES, { showRecordLow: true })).find((s) => s.chart);
-  const off = toSlides(buildBeats(FRAMES, { showRecordLow: false })).find((s) => s.chart);
-  return on.play.holdAt.length === off.play.holdAt.length + 1;
+// The chart and the bar swapped: the last act plays the month over a fullscreen
+// map with the bar rising beside it, rather than drawing the same quantity a
+// second time along the bottom. A stray `chart: true` would take a quarter of
+// the map back and suppress nothing, since the bar no longer stands aside for
+// it -- so the two would be on screen together saying the same thing.
+check('no act draws the chart -- the bar carries the month',
+  acts.filter((a) => a.chart).length === 0);
+check('the record-low flag adds a pause to the month playback', (() => {
+  const holds = (on) => toSlides(buildBeats(FRAMES, { showRecordLow: on }))
+    .find((s) => s.actId === 'record').play.holdAt;
+  return holds(true).length === holds(false).length + 1;
 })());
+
+// ---- the [hidden] trap ---------------------------------------------------
+//
+// Every element the deck shows and hides does it by setting the `hidden`
+// attribute. That works because the browser ships `[hidden] { display: none }`
+// -- a *user-agent* rule, which any author `display:` on the same element beats
+// outright. So a stylesheet that gives one of these a `display` silently
+// disables its own hide, and the symptom is not an error: the key works, the
+// attribute flips, and nothing moves on screen.
+//
+// It has now cost three elements. `.meter` sat on top of the deck for its whole
+// life; `.scrub-look` was caught in review; `.scrubber` was on screen from the
+// first slide for months while T appeared to be broken. That is enough
+// repetition to be worth a test rather than a comment.
+//
+// Read out of the stylesheet as text, because there is no browser here to ask.
+console.log('\nthe [hidden] trap');
+{
+  const css = readFileSync(new URL('../../css/story.css', import.meta.url), 'utf8')
+    // Comments first, or the prose about this very trap -- which quotes
+    // `[hidden] { display: none }` -- parses as a rule and marks everything safe.
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+
+  const blocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, sel, body]) => ({
+    // The *subject* of each selector: the compound the rule actually applies
+    // to. `.chart-shell canvas` styles the canvas, not the shell, so matching
+    // anywhere in the selector would flag it for a `display` it does not have.
+    subjects: sel.split(',').map((s) => s.trim().split(/\s+/).pop()),
+    body,
+  }));
+
+  // id set from JS -> the class the stylesheet knows it by.
+  const TOGGLED = {
+    meter: 'meter', pill: 'pill', chartShell: 'chart-shell',
+    scrubber: 'scrubber', lookRow: 'scrub-look',
+  };
+
+  for (const [id, cls] of Object.entries(TOGGLED)) {
+    const declares = blocks.some((b) => b.subjects.includes(`.${cls}`) && /display\s*:/.test(b.body));
+    const guarded = blocks.some((b) => b.subjects.includes(`.${cls}[hidden]`)
+      && /display\s*:\s*none/.test(b.body));
+    check(`#${id}: hiding it actually hides it`, !declares || guarded,
+      declares
+        ? (guarded ? 'declares display, and guards it' : 'declares display with NO [hidden] rule')
+        : 'no author display, the browser rule applies');
+  }
+}
 
 // The deck has to run today, against an export with no wind in it.
 console.log('\ndegrades without wind');
@@ -340,7 +393,42 @@ console.log('\ndegrades without wind');
   check('most of the deck runs with no wind file', without.length >= slides.length - needWind.length);
   check('every wind stop still has a camera and a caption',
     needWind.every((s) => s.camera && s.caption));
-  check('no stop needs wind to show the chart', !slides.some((s) => s.chart && s.needs.includes('wind')));
+  check('the month playback needs no wind',
+    !slides.some((s) => s.actId === 'record' && s.needs.includes('wind')));
+}
+
+// ---- the smell bar -------------------------------------------------------
+// The bar is the only chrome with a number behind it, and the scale is the
+// whole claim: a bar that says "a lot" on the quiet day argues against the
+// caption next to it. These check the shape of the scale against the real
+// record rather than restating SMELL, so a re-export that moves the record
+// fails here instead of on stage.
+console.log('\nthe smell bar');
+{
+  const ch4 = series.species.ch4;
+  const obs = ch4.obs;
+  const fill = (t) => Math.max(0, Math.min(1, (obs[t] - SMELL.base) / SMELL.span));
+  const pct = (t) => `${Math.round(fill(t) * 100)}%`;
+
+  check('the base sits on the export\'s own background',
+    Math.abs(SMELL.base - ch4.baseline) < 5, `${SMELL.base} vs ${ch4.baseline}`);
+  check('the clean day is a sliver, not a third of the bar',
+    fill(FRAMES.clean) > 0.05 && fill(FRAMES.clean) < 0.2, pct(FRAMES.clean));
+  check('the dirty day fills most of it',
+    fill(FRAMES.dirty) > 0.8, pct(FRAMES.dirty));
+  check('the peak reads fuller than the dirty day',
+    fill(FRAMES.peak) > fill(FRAMES.dirty), `${pct(FRAMES.dirty)} -> ${pct(FRAMES.peak)}`);
+  check('the peak does not saturate -- a pinned bar has nowhere left to go',
+    fill(FRAMES.peak) < 1, pct(FRAMES.peak));
+  check('the record low is empty', fill(FRAMES.recordLow) === 0, pct(FRAMES.recordLow));
+
+  const valid = obs.filter((v) => v != null);
+  const clipped = valid.filter((v) => v - SMELL.base > SMELL.span).length;
+  check('the top clips only a handful of hours', clipped <= 8,
+    `${clipped} of ${valid.length}`);
+  const floored = valid.filter((v) => v <= SMELL.base).length;
+  check('the floor empties only the quietest hours', floored < valid.length * 0.1,
+    `${floored} of ${valid.length}`);
 }
 
 // ---- graticule -----------------------------------------------------------
@@ -1330,11 +1418,13 @@ console.log('\nwind sampler');
     }
 
     // The continuity claim, and the reason the mark changed at all: stepping
-    // from "today the wind comes off the Atlantic" to "this air has crossed
-    // nothing but sea" is a caption change over a picture that does not
-    // restart. If the ambient population were rebuilt on that step the audience
-    // would see the air blink and start again, one slide before being asked to
-    // follow one piece of it.
+    // from "today the wind comes off the Atlantic" to the backwards stop is a
+    // caption change over a picture that does not restart. If the ambient
+    // population were rebuilt on that step the audience would see the air blink
+    // and start again, at the very moment they are asked to follow one piece of
+    // it. (The two used to have a forwards stop between them; dropping it made
+    // this step the one that carries the continuity, so it matters more, not
+    // less.)
     {
       const l = layerAt(200, 170, -5, 46);
       for (let k = 0; k < 40; k++) l.tick(1 / 60);
@@ -1684,6 +1774,22 @@ console.log('\nheadless mount');
     press('G');
     check('G switches back', deck.map.crispSources === true);
 
+    // H puts the presenter panel away. Half of this binding lives in the
+    // stylesheet -- see the [hidden] trap above, which is what made the same key
+    // do nothing under its old name for months. This half checks the attribute
+    // moves at all, and that it starts where the page starts it: up.
+    {
+      const panel = byId('scrubber');
+      check('the panel is up to begin with', panel.hidden === false);
+      press('h');
+      check('H puts it away', panel.hidden === true);
+      press('H');
+      check('and brings it back', panel.hidden === false);
+      press('t');
+      check('T is the same switch', panel.hidden === true);
+      press('t');
+    }
+
     // The bindings the deck is actually driven by, exercised through the same
     // handler a keyboard reaches.
     deck.go(0);
@@ -1727,6 +1833,46 @@ console.log('\nheadless mount');
       deck.go(plain);
       check('a stop that needs no wind never shows the placeholder',
         nodes.get('pill').hidden === true);
+    }
+
+    // The bar, through the real paintMeter rather than the arithmetic above.
+    // Both halves of it have been wrong at once: `[hidden]` did nothing, because
+    // an author `display: flex` beats the user-agent rule, so it showed on every
+    // slide including the ones that hide it -- and it was scaled across the
+    // month's range, so the clean day sat a third of the way up a bar whose
+    // caption says there is nothing to smell.
+    const meter = nodes.get('meter');
+    const bar = nodes.get('meterFill');
+    const goAct = (id) => {
+      const k = deck.slides.findIndex((s) => s.actId === id);
+      if (k >= 0) deck.go(k);
+      return k;
+    };
+
+    goAct('where');
+    check('the bar is hidden before there is any air on screen', meter.hidden === true);
+    goAct('sources');
+    check('the bar is hidden on the guessed emissions', meter.hidden === true);
+    goAct('clean-smell');
+    check('the bar shows once the red patch is up', meter.hidden === false);
+
+    // `record` has no anchor of its own, so retiming it moves the frame without
+    // rewriting any of the deck's moments -- which is how the month plays.
+    if (goAct('record') >= 0) {
+      check('the bar carries the last act', meter.hidden === false);
+      deck.retime(FRAMES.clean);
+      const cleanPct = Number.parseFloat(bar.style.height);
+      deck.retime(FRAMES.peak);
+      const peakPct = Number.parseFloat(bar.style.height);
+      deck.retime(FRAMES.recordLow);
+      const lowPct = Number.parseFloat(bar.style.height);
+      check('it fills upward, not sideways', bar.style.width === undefined,
+        String(bar.style.width));
+      check('the clean day barely registers', cleanPct > 5 && cleanPct < 20, `${cleanPct}%`);
+      check('the peak nearly fills it', peakPct > 90 && peakPct < 100, `${peakPct}%`);
+      check('the storm empties it', lowPct === 0, `${lowPct}%`);
+      check('the chart stays down while the bar has the month',
+        nodes.get('chartShell').hidden === true);
     }
   }
 }

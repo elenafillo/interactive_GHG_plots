@@ -37,7 +37,30 @@
  */
 export const FRAMES = { clean: 36, dirty: 153, peak: 154, recordLow: 349 };
 
-/** A third number on the chart in Act 5. Off: two contrasting days is the point. */
+/**
+ * The smell bar's scale, in ppb above a fixed floor.
+ *
+ * The bar used to run across the month's whole range, 1919 to 2176, which put
+ * the clean day a third of the way up a bar whose caption says there is nothing
+ * to smell. It shows an *enhancement* instead: how far above clean air this
+ * hour is, clamped at zero.
+ *
+ * `base` is the export's own background (1928.6) rounded, so the clean day
+ * reads as a genuine sliver rather than as a flat zero -- which is the honest
+ * picture, since the model puts +13 ppb on it. `span` was chosen against the
+ * record: the dirty day lands at 89% of the bar and the peak hour at 97%, so
+ * the strongest frame of the event is still the fullest thing on screen. A
+ * narrower top saturates -- at +150 the dirty day and the peak are both hard
+ * against the ceiling and the month's playback sits pinned there. Five hours of
+ * 696 clip, all of them in the storm.
+ *
+ * Not `series.modelled`: that is the *modelled* enhancement, 5-86 ppb, a
+ * different quantity on a different scale -- and a modelled number is the one
+ * thing this deck refuses to put on screen as if it were a measurement.
+ */
+export const SMELL = { base: 1930, span: 200 };
+
+/** A third pause in the month's playback. Off: two contrasting days is the point. */
 export const SHOW_RECORD_LOW = false;
 
 /**
@@ -129,10 +152,10 @@ export const RELEASES = {
   // 9.9 km median and a 14.5 km maximum from the mast, against the 532 km worst
   // case of the corridor design that preceded it.
   ocean: { seed: 'backTrack', hours: 12, arrivals: 4, jitterKm: 3, count: 24, parcels: 12 },
-  // The dirty day. One release for both of its stops now -- the forward one
-  // used to release from an ellipse over London and the Low Countries, which
-  // needed a separate fan for the backwards stop to have anything to converge
-  // on. Both are the same fan read in opposite directions.
+  // The dirty day. One fan, and now only one stop reading it -- backwards. The
+  // forwards stop it used to share with released from an ellipse over London
+  // and the Low Countries; folding both onto this fan is what let that stop be
+  // dropped without the backwards one losing anything to converge on.
   //
   // ⚠ That day's air *stalls* -- 6.45 m/s at the mast falling to 0.99 m/s
   // eighteen hours back -- so **36 hours, not 12**. Measured on the shipped
@@ -168,8 +191,15 @@ export const RELEASES = {
  *
  * So this stop exists to be looked at and probably deleted. It runs the same
  * backwards replay over the `sources` ellipse, which does converge; what it will
- * not do is fill the bend. Set to `false` and the stop disappears with no other
- * change.
+ * not do is fill the bend.
+ *
+ * ⚠ **The price of `false` went up.** This stop used to sit after a forwards
+ * one that followed the same air *in* and named Belgium and London. That stop
+ * has been dropped, so switching this off now leaves the dirty day with no
+ * stop that follows its air at all, and no sentence naming the two patches the
+ * sources card just showed -- which is the claim "the red patch lands right on
+ * top" two slides later is supposed to be checking. Delete this and that
+ * sentence has to move onto another stop first.
  */
 export const SHOW_DIRTY_BACKTRACK = true;
 
@@ -300,8 +330,35 @@ export function buildBeats(frames = FRAMES, {
           layers: { station: 1, graticule: 1, cities: 1 },
         },
         {
+          // Out from 15, then out again to 25 -- and *down*, which is the half
+          // that matters. Widening alone would have spent most of the new room
+          // on the Norwegian Sea, so the centre drops with it: at 15 the frame
+          // stopped at 48.4 N on a widescreen, cutting through Paris.
+          //
+          // The two moves together are close to a pure southward extension. The
+          // top edge barely stirs -- 59.63 -> 59.03 at 16:9, 61.50 -> 61.38 at
+          // 4:3 -- while the bottom drops 3.4 and 3.9 degrees respectively, to
+          // 44.97 and 42.63. That reaches the Alps, the Bay of Biscay and the
+          // top of Iberia: ground the air genuinely comes over, rather than
+          // more empty North Atlantic.
+          //
+          // 1,708 km across at this latitude, so the *radius* is around 530
+          // miles. The caption is a claim about reach from the mast, not about
+          // the width of the frame, so "hundreds of miles" still holds -- it
+          // held at 15 too, at 405 miles, but only just.
+          //
+          // The mast sits at (-2.54, 52.00) and the camera at (-3, 52), so it
+          // is now within half a degree of the centre of the frame. For a beat
+          // about how far something can smell, having it in the middle of its
+          // own radius is worth more than the tidier round latitude.
+          //
+          // ⚠ The ceiling is the *north* edge of the data at 4:3: 31.9 from
+          // this centre, against 42.5 at 16:9. So a span tuned on a widescreen
+          // laptop can still run off the top of the map in a 4:3 hall, and the
+          // gap between the two aspects is wide enough to hide it. The suite
+          // checks both, so it fails there rather than on the night.
           caption: 'It can smell for hundreds of miles.',
-          camera: { lon: -3.0, lat: 54.0, span: 15 },
+          camera: { lon: -3.0, lat: 52.0, span: 25 },
           layers: { cities: 1 },
         },
       ],
@@ -323,10 +380,20 @@ export function buildBeats(frames = FRAMES, {
       //
       // Both stops draw the same moving air. The first is the field on its own
       // -- tracers everywhere, drifting -- and the second picks one body of air
-      // out of it and follows it in. Stepping between them is a caption change
-      // over a picture that never restarts, which is the whole reason the wind
-      // is drawn as parcels rather than as arrows: an audience shown a moving
-      // dot here must not have to unlearn it one slide later.
+      // out of it and runs it *backwards*, out to where it came from. Stepping
+      // between them is a caption change over a picture that never restarts,
+      // which is the whole reason the wind is drawn as parcels rather than as
+      // arrows: an audience shown a moving dot here must not have to unlearn it
+      // one slide later.
+      //
+      // There used to be a forwards stop between the two -- the same body of
+      // air followed *in* to the mast, captioned "This air has crossed nothing
+      // but sea." It was dropped: two beats of the same air in two directions
+      // is one beat too many for a caption to carry, and the backwards run is
+      // the one the next act's reveal needs. Its consequence is that the
+      // backwards stop is now the audience's *first* sight of a single body of
+      // air, so its caption cannot lean on a forwards beat that no longer
+      // exists -- it has to introduce the idea itself.
       // lat 52 -> 50, on the user's call, so the frame holds the lower
       // latitudes the seeded cohort reaches. At 16:9 the bottom edge moves from
       // 44.41 to 42.41, and the 24 h seeds reach 43.25 -- 0.84 deg of margin.
@@ -339,13 +406,7 @@ export function buildBeats(frames = FRAMES, {
           layers: { wind: 1 },
         },
         {
-          caption: 'This air has crossed nothing but sea.',
-          camera: { lon: -10, lat: 50, span: 27 },
-          layers: { wind: 1 },
-          release: { from: 'ocean' },
-        },
-        {
-          // The third beat, and the one the whole rework is for. The same air,
+          // The second beat, and the one the whole rework is for. The same air,
           // leaving the mast and running back out to where it came from -- so
           // the next slide's red patch arrives over a shape the audience has
           // just watched being traced out.
@@ -358,7 +419,13 @@ export function buildBeats(frames = FRAMES, {
           // The ambient air drops to a whisper rather than switching off: the
           // step from the previous slide has to stay a caption change over a
           // continuous picture, and killing the teal outright would restart it.
-          caption: 'Now run it backwards. Where was this air?',
+          // ✏️ PLACEHOLDER -- rewrite me. The old line was "Now run it
+          // backwards. Where was this air?", which only parsed as an answer to
+          // the forwards stop that used to sit above it. With that stop gone
+          // this is the first time the audience sees one body of air, so the
+          // caption has to do two jobs at once: say we are winding the clock
+          // *back*, and say what the marks leaving the mast are. Ten words.
+          caption: 'Follow the air backwards. Where has it just been?',
           camera: { lon: -10, lat: 50, span: 27 },
           layers: { wind: 1 },
           release: { from: 'ocean' },
@@ -506,33 +573,36 @@ export function buildBeats(frames = FRAMES, {
           layers: { fluxHi: 0.92, wind: 1, cities: 1 },
           needs: ['wind'],
         },
-        {
-          // The same two-beat move the Atlantic act makes, and for the same
-          // reason: the field first, then one body of air picked out of it. The
-          // turn is easier to *see arriving* than to state, and this is the
-          // mirror image of the Atlantic stream -- air sweeping up from the
-          // south-east instead of in from the west, over ground this time.
-          //
-          // Named places rather than "cities", because the audience has just
-          // been shown the emissions map and these are the two bright patches
-          // on it. Both are honestly inside the release ellipse: it spans
-          // London and the Thames through to Brussels and Antwerp, and the
-          // centre track runs (+1.9,51.0) -> (+0.1,51.7) just north of London
-          // -> (-1.5,52.5). One colour for both, since the caption does not
-          // rank them -- B5's two-colour split is a second idea and would need
-          // its own stop and its own line.
-          caption: 'This air came over Belgium and London.',
-          camera: { lon: 0.5, lat: 52, span: 21 },
-          layers: { wind: 1, cities: 1 },
-          release: { from: 'sources' },
-          needs: ['wind'],
-        },
-        // On trial, and gated on SHOW_DIRTY_BACKTRACK -- see the note there.
-        // The same device the clean day earns; whether it earns it here is a
-        // question for the screen, because the measurement says the tracks
-        // cannot reach the bend.
+        // The same two-beat move the Atlantic act makes, and for the same
+        // reason: the field first, then one body of air picked out of it. The
+        // turn is easier to *see arriving* than to state.
+        //
+        // The forwards half of it is gone -- air followed *in* from the
+        // south-east, captioned "This air came over Belgium and London." --
+        // dropped with its opposite number in `clean-wind` so the deck makes
+        // this move one way only, and the same way both times.
+        //
+        // ⚠ That leaves the naming of Belgium and London to the backwards stop
+        // below, which is gated. Both places are honestly inside the release:
+        // the fan spans London and the Thames through to Brussels and Antwerp,
+        // and the centre track runs (+1.9,51.0) -> (+0.1,51.7) just north of
+        // London -> (-1.5,52.5). One colour for both, since the caption does
+        // not rank them.
+        //
+        // Gated on SHOW_DIRTY_BACKTRACK -- see the note there, and read it
+        // again now: with the forwards stop gone, setting that flag to `false`
+        // no longer trims a trial stop, it removes the *only* place the dirty
+        // day follows its air at all, and with it the sentence that names the
+        // two patches the sources card just showed.
         ...(showDirtyBacktrack ? [{
-          caption: 'Run it backwards. Where was this air?',
+          // ✏️ PLACEHOLDER -- rewrite me. The old line was "Run it backwards.
+          // Where was this air?", which answered the forwards stop that used to
+          // sit above it. That stop is gone, so this caption now has to carry
+          // the place names as well: it is the deck's only claim that the air
+          // came over Belgium and London, and the payoff two slides later
+          // ("the red patch lands right on top") is checking *this* sentence
+          // against the guess. Ten words.
+          caption: 'Wind the clock back. This air crossed Belgium and London.',
           camera: { lon: 0.5, lat: 52, span: 21 },
           layers: { wind: 1, cities: 1 },
           release: { from: 'sources' },
@@ -567,7 +637,13 @@ export function buildBeats(frames = FRAMES, {
       id: 'record',
       title: 'How much can we smell?',
       anchor: null,
-      chart: true,
+      // The month used to run as a line chart along the bottom. It does not any
+      // more: the bar on the left already says how much the mast is smelling,
+      // and a chart drawing the same quantity a second way -- with an axis, a
+      // cursor and a shape to read -- competes with the map for the one thing
+      // the audience is meant to watch. So the two swapped. The chart machinery
+      // is still wired up behind `chart: true` if an act ever wants it back.
+      chart: false,
       stops: [
         {
           caption: 'A little on Sunday. A lot on Friday.',

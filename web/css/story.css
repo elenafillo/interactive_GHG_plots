@@ -20,6 +20,21 @@
 
   --chart-h: 0px;
   --gutter: clamp(16px, 2.4vw, 34px);
+
+  /* Where the bottom row splits. The caption owns everything left of this and
+     the presenter panel everything right of it, and both read the same number
+     -- so the two cannot overlap however wide the panel's contents get, and
+     moving the split re-wraps the caption instead of letting the panel sit on
+     top of it. The panel used to be centred, which is why it did: its natural
+     width is around 1100px once the slider, the clock, the two buttons and the
+     key legend are all on one line, so on a 1600px screen it reached from 250
+     to 1350 while the caption ran to 990. Nudging a box that wide does nothing
+     -- it has to stop being centred.
+
+     56vw is the balance point. Below it the caption starts breaking short
+     lines at 36px; above it the panel's slider stops fitting beside the clock.
+     One number, so try another if the room disagrees. */
+  --panel-left: 56vw;
 }
 
 * { box-sizing: border-box; }
@@ -77,7 +92,12 @@ body.with-chart { --chart-h: clamp(150px, 24vh, 240px); }
   position: absolute;
   left: var(--gutter);
   bottom: calc(var(--chart-h) + var(--gutter));
-  max-width: min(52ch, 60vw);
+  /* Two caps, and they bind at different sizes. `52ch` is the reading measure
+     and is what holds on a big screen; the calc is the room actually left by
+     the presenter panel and is what holds on a normal one. Whichever is
+     smaller wins, so the caption always wraps to fit rather than running under
+     the panel. */
+  max-width: min(52ch, calc(var(--panel-left) - var(--gutter) * 2));
   z-index: 10;
 }
 
@@ -89,6 +109,12 @@ body.with-chart { --chart-h: clamp(150px, 24vh, 240px); }
   font-weight: 620;
   line-height: 1.22;
   letter-spacing: -0.015em;
+  /* Once a caption wraps, split it evenly rather than filling line one and
+     leaving a word alone on line two. At ten words in 36px type the ragged
+     version is very visible from the back of a room. Ignored by browsers that
+     do not have it, which costs nothing -- the wrap still happens, it is just
+     the default one. */
+  text-wrap: balance;
   color: var(--ink);
   background: rgba(252, 252, 251, 0.9);
   border-radius: 12px;
@@ -98,36 +124,66 @@ body.with-chart { --chart-h: clamp(150px, 24vh, 240px); }
 
 /* ---- smell meter ------------------------------------------------------- */
 
-/* How much the mast is smelling, as a share of the month's range. No units and
-   no number by default -- "a little" to "a lot" is the whole claim, and a figure
-   next to it is a second thing to read. N reveals the number for the presenter. */
+/* How much the mast is smelling, as a height above clean air. No units and no
+   number by default -- "a little" to "a lot" is the whole claim, and a figure
+   next to it is a second thing to read. N reveals the number for the presenter.
+
+   Upright rather than lying down: a level that rises and falls is the shape
+   everyone already knows from a thermometer or a fuel gauge, and it reads as a
+   quantity at a glance. A horizontal bar reads as progress through something.
+
+   Top left, in its own corner rather than inside the HUD. Stacked with the
+   caption it pushed the text up the screen and over the mast every time it
+   appeared, and the caption moving is worse than the bar being further from it:
+   the audience is reading one and glancing at the other. The far corner from
+   the dots and the date, and clear of the pill in the middle. */
 .meter {
+  --track-h: clamp(110px, 17vh, 200px);
+  position: absolute;
+  left: var(--gutter);
+  top: var(--gutter);
+  z-index: 10;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 12px 10px;
   background: rgba(252, 252, 251, 0.9);
   border-radius: 999px;
   width: fit-content;
   box-shadow: 0 1px 0 var(--hairline);
 }
+
+/* Not redundant, and not decoration. `display: flex` above is an *author*
+   declaration and the browser's `[hidden] { display: none }` is a user-agent
+   one, so without this the attribute paintMeter sets does nothing at all and
+   the bar sits on screen for the whole deck -- including the slides that
+   deliberately hide it. Same trap as `.scrub-look` further down. */
+.meter[hidden] { display: none; }
+
 .meter-label { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .meter-track {
   position: relative;
-  width: clamp(120px, 16vw, 220px);
-  height: 10px;
+  width: 10px;
+  height: var(--track-h);
   border-radius: 999px;
   background: var(--grid);
   overflow: hidden;
 }
 .meter-track i {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 0;
+  inset: auto 0 0 0;              /* anchored to the bottom, so it fills upward */
+  height: 0;
   border-radius: 999px;
-  background: linear-gradient(90deg, #fbc4a8, var(--model));
-  transition: width 0.18s ease-out;
+  /* Sized to the whole track and pinned to its foot, so a colour means the same
+     level whatever the fill is doing. Left to scale with the fill, the top of
+     the ramp would be at the top of the liquid -- and the clean day's sliver
+     would be as dark as the peak. */
+  background: linear-gradient(0deg, #fbc4a8, var(--model));
+  background-size: 100% var(--track-h);
+  background-position: left bottom;
+  background-repeat: no-repeat;
+  transition: height 0.18s ease-out;
 }
 .meter-num { font-size: 13px; color: var(--ink2); font-variant-numeric: tabular-nums; display: none; }
 body.show-number .meter-num { display: inline; }
@@ -228,11 +284,29 @@ body.show-number .meter-num { display: inline; }
 
 /* ---- presenter scrubber ------------------------------------------------ */
 
+/* Right of the split, not centred on the screen -- see `--panel-left`. It is
+   pinned to both edges of its half rather than sized to its contents, so the
+   caption's cap and the panel's left edge are the same line and stay that way
+   when the contents change width (the key legend goes at 720px, the look row
+   appears under `?tune=1`). `flex-wrap` was already here and now does the work:
+   the row that used to run across the screen stacks into two or three.
+
+   Lifted clear of the date stamp, which owns the bottom-right corner. Centred,
+   the panel stopped short of it; anchored right it would sit on top of it. */
+/* The third `[hidden]` rule in this file, and the same trap each time: the
+   `display` below is an *author* declaration and the browser's
+   `[hidden] { display: none }` is a user-agent one, so without this the
+   attribute is set and nothing happens. That is why H (and T before it) had
+   no visible effect -- the key was working, the panel was not listening.
+   Anything here that declares `display` has to say this for itself. */
+.scrubber[hidden] { display: none; }
+
 .scrubber {
   position: absolute;
-  left: 50%;
-  bottom: calc(var(--chart-h) + 12px);
-  transform: translateX(-50%);
+  left: var(--panel-left);
+  right: var(--gutter);
+  bottom: calc(var(--chart-h) + var(--gutter) + 34px);
+  transform: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -246,7 +320,17 @@ body.show-number .meter-num { display: inline; }
   font-size: 12px;
   color: var(--ink2);
 }
-.scrubber input[type="range"] { width: clamp(180px, 30vw, 420px); accent-color: var(--obs); }
+/* Flexible rather than `clamp(180px, 30vw, 420px)`. The panel is now bounded by
+   the split, so a slider sized off the *viewport* could be wider than the box
+   holding it and push the clock and the buttons out of the panel instead of
+   wrapping them. Sized off its own row: it takes what is spare, gives it back
+   when the look row appears, and never goes below 180 before wrapping. */
+.scrubber input[type="range"] {
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 420px;
+  accent-color: var(--obs);
+}
 .scrub-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .scrub-anchor { color: var(--muted); white-space: nowrap; }
 .scrub-help { color: var(--muted); white-space: nowrap; }
@@ -297,4 +381,10 @@ body.show-number .meter-num { display: inline; }
   .hud { max-width: none; right: var(--gutter); }
   .caption { font-size: 20px; }
   .scrub-help, .scrub-anchor { display: none; }
+  /* No split worth having at this width: 44% of a phone is not a panel, and
+     the caption is full-bleed here anyway. The panel takes the whole row and
+     stacks. It keeps the raised `bottom` -- the stamp is still in the corner
+     underneath it -- so on a phone it does land over the caption, which is the
+     same triage the rest of this block is. */
+  .scrubber { left: var(--gutter); }
 }

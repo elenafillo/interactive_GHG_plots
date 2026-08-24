@@ -4,8 +4,9 @@ Current state and what is left. The long plan
 (`i-want-to-create-immutable-quasar.md`) stays as the archaeology — every number
 below was measured there, and this file does not repeat the working.
 
-**Last updated 24 Aug 2026.** Both suites green: 459 checks in
+**Last updated 24 Aug 2026.** Both suites green: 463 checks in
 `web/js/story/selftest.mjs`, and `web/js/selftest.mjs` untouched and still green.
+(Counted, not remembered — this file has carried two different stale numbers.)
 
 ---
 
@@ -24,7 +25,7 @@ time, colour never the only channel.
 
 ```
 node scripts/serve.mjs             # then open /story.html
-node web/js/story/selftest.mjs     # 459 checks, the harness — there is no browser automation here
+node web/js/story/selftest.mjs     # 463 checks, the harness — there is no browser automation here
 node web/js/selftest.mjs           # the explorer's own
 node scripts/measure_seeding.mjs   # measures the seeding against the shipped atlases
 ```
@@ -41,22 +42,37 @@ python scripts/verify_export.py --site RGL
 
 | | |
 |---|---|
-| presenting | `→` `←` `Space` · `.` play/pause · `1`–`6` act · `F` fullscreen · `R` restart act |
-| on the night | `T` scrubber · `[` `]` nudge ±1 h (shift ±6) · `N` show the number · `G` square/smooth cells · `W` ambient density · `E` stream density |
+| presenting | `→` `←` `Space` · `.` play/pause · `H` hide the panel · `1`–`6` act · `F` fullscreen · `R` restart act |
+| on the night | `T` same switch as `H` · `[` `]` nudge ±1 h (shift ±6) · `N` show the number · `G` square/smooth cells · `W` ambient density · `E` stream density |
+
+The panel is **up when the deck opens** and `H` puts it away. That is the
+behaviour the deck has always had — `hidden` was on the tag and did nothing —
+so the attribute has been dropped from `story.html` rather than the opening
+state changed. Add `hidden` back to that tag to make it presenter-only for real.
 | tuning | `?tune=1` — the sources-contrast knobs, and stored frame overrides. Without it the deck always opens on `beats.js` |
 
 ---
 
-## The deck as it runs — 6 acts, 21 slides
+## The deck as it runs — 6 acts, 19 slides
 
 | act | camera | stops |
 |---|---|---|
-| `where` | Bristol → mast → UK | This is Bristol. · Forty kilometres north, a mast sniffs the air. · It can smell for hundreds of miles. |
-| `clean-wind` | −10, 50, span 27 | Today the wind comes off the Atlantic. · This air has crossed nothing but sea. *(fan)* · Now run it backwards. Where was this air? |
+| `where` | Bristol → mast → −3, 52, span 25 | This is Bristol. · Forty kilometres north, a mast sniffs the air. · It can smell for hundreds of miles. |
+| `clean-wind` | −10, 50, span 27 | Today the wind comes off the Atlantic. · ✏️ *Follow the air backwards. Where has it just been?* *(fan, backwards)* |
 | `clean-smell` | same framing | Red is everything the mast can smell. · It is all empty sea. Nothing there. |
 | `sources` | −0.5, 52.5, span 24 | Purple is where methane comes from. · **But nobody counted it. This is a guess.** · cows and farms · rubbish and sewage · gas that leaks or burns · all three together |
-| `dirty` | 0.5, 52, span 21 | Five days later, the wind has turned. · Now it blows from cities and farms. *(fluxHi + wind)* · This air came over Belgium and London. *(red stream)* · Run it backwards. · The red patch lands right on top. · And we can smell it. *(plays)* |
-| `record` | −6, 52, span 30 | A little on Sunday. A lot on Friday. *(month playback, chart up)* |
+| `dirty` | 0.5, 52, span 21 | Five days later, the wind has turned. · Now it blows from cities and farms. *(fluxHi + wind)* · ✏️ *Wind the clock back. This air crossed Belgium and London.* *(red stream, backwards)* · The red patch lands right on top. · And we can smell it. *(plays)* |
+| `record` | −6, 52, span 30 | A little on Sunday. A lot on Friday. *(month playback, fullscreen, the bar carries it)* |
+
+✏️ = **placeholder wording, written to be replaced.** Both are in
+`web/js/story/beats.js`, each under a comment block that says what the line has
+to do; search the file for `PLACEHOLDER`. Ten words maximum, no jargon — the
+suite enforces both.
+
+**The air is only ever followed backwards now.** The two forwards stops —
+`clean-wind`'s *"This air has crossed nothing but sea."* and `dirty`'s *"This
+air came over Belgium and London."* — are gone. Nothing else changed: the same
+fans, read one way instead of two.
 
 `clean-wind` and `clean-smell` must stay framed **identically** or the plume
 stops fading in over a still camera.
@@ -81,6 +97,21 @@ correlation payoff was never built and probably never should be.
 Play windows are stored as **offsets** from the anchor, so retiming an act moves
 its animation with it.
 
+## The bar
+
+Upright, in the top-left corner and in its own box — deliberately not inside the
+HUD, so the caption never moves when the bar comes or goes. It shows **how far
+above clean air this hour is** — `SMELL` in `beats.js`, base 1930 ppb (the
+export's own background,
+rounded) over a span of 200. The clean day fills 11% of it, the dirty day 89%,
+the peak hour 97%; 5 hours of 696 clip at the top, all in Storm Dennis. A
+narrower span saturates and the peak stops being the fullest thing on screen.
+
+It is on screen exactly when there is a footprint to be smelling — so it is
+absent through `where` and the whole sources card, where there is no hour
+attached to the map. The last act is fullscreen and lets the bar carry the
+month; no act draws the chart any more, though `chart: true` still works.
+
 ## Files
 
 | file | role |
@@ -89,7 +120,7 @@ its animation with it.
 | `web/js/story/beats.js` | `FRAMES`, `RELEASES`, every act and caption. No DOM, no imports |
 | `web/js/story/deck.js` | render loop, camera, keys, caption, meter, scrubber |
 | `web/js/story/mapview.js` | **fork** of `../mapview.js` — graticule fix, `cities`, source rasters |
-| `web/js/story/selftest.mjs` | 459 checks, including a headless mount that walks all 21 slides |
+| `web/js/story/selftest.mjs` | 463 checks, including a headless mount that walks all 19 slides |
 | `web/js/wind.js` | `WindField` (sampler), `WindLayer` (ambient air + the red stream) |
 | `web/js/advect.js` | RK2 midpoint, back-tracks, the fan, trails |
 | `web/js/palette.js` | the ramps and `SOURCE_DISPLAY`. All CVD-measured |
@@ -106,41 +137,29 @@ emissions total + three families, basemap, series.
 
 ### From the screen — next up
 
-- [ ] **Drop the forwards beat; keep only the backwards.** The forward release
-      stops are `clean-wind`/1 *"This air has crossed nothing but sea."* and
-      `dirty`/2 *"This air came over Belgium and London."*. The backwards ones
-      that stay are `clean-wind`/2, `clean-smell`/0 and `dirty`/3. ⚠ Both
-      backwards captions read *"Now run it backwards"* / *"Run it backwards"*,
-      which only parses **after** a forwards beat — they have to be rewritten,
-      not just promoted. Takes the deck to 19 slides.
-- [ ] **Turn the smell bar vertical.** `.meter` in `story.css` is a flex row
-      with a 10 px `.meter-track` filled left → right. Vertical means a column,
-      a fill anchored to the bottom, and *a little* / *a lot* swapping ends.
-- [ ] **Make the bar the enhancement, not the raw reading.** `paintMeter`
-      (`deck.js:184`) scales `obs` between `obsMin` 1919 and `obsMax` 2176 — so
-      the clean day already sits a third of the way up a bar that is supposed to
-      say "nothing to smell". It should show **obs − 1950 ppb**, the clean-air
-      average, clamped at zero and topping out near +226. Not `series.modelled`:
-      that is the *modelled* enhancement, 5–86 ppb, a different quantity on a
-      different scale.
-- [ ] **Hide the timeseries on the last act** and let the bar carry the month.
-      `record` sets `chart: true`, which raises `#chartShell` — and the meter's
-      own condition (`stop.layers.footprint > 0 && !stop.chart`) is exactly what
-      suppresses the bar there today. The two swap.
+- [x] **Drop the forwards beat; keep only the backwards.** Done — 19 slides,
+      both suites still green. The two forwards stops are deleted; the
+      backwards ones are `clean-wind`/1, `clean-smell`/0 and `dirty`/2. Both
+      backwards captions were rewritten rather than promoted, since *"Now run
+      it backwards"* only parsed after a forwards beat. **The two rewrites are
+      placeholders** — see the ✏️ rows above and the `PLACEHOLDER` comments in
+      `beats.js`.
+- [ ] **Read the two placeholder captions on screen.** The `dirty` one is the
+      harder of the two: it now has to name Belgium and London *and* say the
+      clock is winding back, because the forwards stop that used to name them
+      is gone, and *"the red patch lands right on top"* two slides later is
+      checking that sentence against the guess.
 - [ ] **A visible pause button.** `.` is currently the only way to stop the
       playback. `.nav` already holds prev/next and is where it belongs.
 - [ ] **Cut the tuning keys.** `G` (square vs smooth cells) goes — settled. Then
       audit the rest: `W` and `E` cycle tracer densities and only report to the
       console, `[` `]` and `T` are frame tuning, `N` reveals the number, `R`
       restarts the act, `F` fullscreens, `1`–`9` jump. The presenting set is
-      `→ ← Space . 1`–`6 F R`; everything outside it is a candidate for deletion
-      or for `?tune=1`.
-
-The three meter items land on the same element, and it is worth knowing before
-touching it that **the meter is on screen permanently** — `.meter` declares
-`display: flex`, so `paintMeter`'s `hidden` toggle does nothing (see the
-`[hidden]` item under Build). Fix that first or the "hide the timeseries" swap
-will look like it has not worked.
+      `→ ← Space . H 1`–`6 F R`; everything outside it is a candidate for
+      deletion or for `?tune=1`. ⚠ **`H` and `T` are now the same switch** —
+      `H` was added because it is what "hide" is called everywhere else, and
+      `T` kept because it is the documented one. Pick one when you do this
+      audit; dropping the other is one line in `deck.js`.
 
 ### Decide — story questions, not code
 
@@ -150,7 +169,12 @@ will look like it has not worked.
       frame overrides now are. The plan once proposed `−9 … −7.25`. Open
       `?tune=1`, read the three numbers actually in force, paste them into
       `palette.js` — then either gate that read too or drop the store.
-- [ ] **`SHOW_DIRTY_BACKTRACK`** is `true` and on trial. Keep or delete.
+- [ ] **`SHOW_DIRTY_BACKTRACK`** is `true` and on trial — but ⚠ **the price of
+      deleting it went up.** It used to gate a spare stop sitting after the
+      forwards one; now it gates the dirty day's *only* look at where its air
+      came from, and the only sentence naming Belgium and London. Setting it
+      `false` today drops the claim the payoff slide is checking. To delete it,
+      that sentence has to move onto another stop first.
 - [ ] **The two see-through stops** now draw `fluxHi` at 0.35 / 0.12, alphas
       carried straight over from the coarse layer. The hi-res raster hides 64%
       of its cells and draws the rest harder, so the same number is a quieter
@@ -161,12 +185,23 @@ will look like it has not worked.
 - [ ] **`dirty` camera** — the other half of the zoom-out. Proposed lon −1.0,
       lat 51, span 24; bottom edge 46.09 → 44.25. The centre has to move *west*:
       the wind crop ends at lon 12.10 and that frame already reaches lon 11.
-- [ ] **`[hidden]` does nothing on `.meter` and `.scrubber`.** Both declare
-      `display: flex`, an author rule, which beats the browser's
-      `[hidden] { display: none }`. So the presenter panel is on screen
-      permanently, `T` does nothing visible, and the meter shows on slides that
-      hide it. One rule fixes all of it — but it changes what the deck looks
-      like, so it is a decision as much as a fix.
+- [x] **`[hidden]` on `.scrubber`** — fixed, and the panel moved. Two separate
+      things had to change before it could be put away:
+
+      - It declared `display: flex`, an author rule, which beats the browser's
+        `[hidden] { display: none }` — so `T` had been setting the attribute
+        with no effect for months. `.scrubber[hidden]` now guards it.
+      - It was centred and about 1100 px wide, so it lay across the caption's
+        half of the bottom row. It is anchored right of `--panel-left` in
+        `story.css`, the caption's `max-width` is computed from the same
+        variable, and the slider is flex-sized so the panel wraps inside its
+        half instead of spilling.
+
+      **This trap has now cost three elements** — `.meter`, `.scrub-look`,
+      `.scrubber` — so the suite checks it directly. It reads `story.css` as
+      text, finds every element the deck sets `hidden` on, and fails any that
+      declares its own `display` without a matching `[hidden]` rule. Verified
+      by removing the rule and watching it fail.
 
 - [ ] **`WEB_PIPELINE.md`** — the wind asset is still undocumented beside the
       footprint atlas.
@@ -233,3 +268,43 @@ will look like it has not worked.
   frames, still live for the sources look (see the first to-do).
 - **`story.html` cannot be opened over `file://`** — modules and `fetch` are
   blocked. The page says so rather than hanging.
+
+## Environment
+
+This is the part that will waste your time if you do not read it.
+
+- **Python lives at** `C:\Users\ef17148\AppData\Local\miniconda3\envs\gates_basic2\python.exe`.
+  `conda` is **not** on `PATH`, and `conda activate` fails in this shell. Call
+  the interpreter by its full path. The env in `env.yml`
+  (`interactive_plots_env`) does not exist on this machine.
+- **`np.corrcoef` crashes the interpreter** — a BLAS delay-load failure, exit
+  code `0xC06D007F`, no traceback, no output. Anything routing through
+  `np.dot`/matmul does the same. `_pearson()` in the exporter computes
+  correlation from sums for this reason. If a script dies silently with no
+  message, suspect BLAS first.
+- **PowerShell mangles inline Python** passed via `python -c "..."` in
+  non-obvious ways. Write a file and run it instead.
+- **Redirecting the exporter's stdout crashes it** before it does any work:
+  piping drops Python to cp1252 and the `CH₄` species label raises
+  `UnicodeEncodeError`. Prefix with `PYTHONIOENCODING=utf-8` whenever you pipe or
+  redirect. Straight to a terminal it is fine.
+- **`zarr 2.18.7` and `numcodecs 0.15.1`** are installed in `gates_basic2`
+  (numpy pinned at 1.26.4 so the BLAS above is left alone). The met stores are
+  zarr v2 — do not let anything pull zarr 3 in.
+- **`Remove-Item "$env:TEMP\..."` with a wildcard is blocked** by the harness as
+  a protected path. Use a named subdirectory.
+- **No browser automation is available.** You cannot screenshot or drive the
+  page. This is why `web/js/selftest.mjs` exists — it stubs a canvas and
+  exercises the drawing code headlessly. Extend it rather than assuming a change
+  works; a bug that only shows in the browser costs the user a round trip.
+- `node` is on `PATH`. A static server is likely already running on **8765**;
+  check before starting another. `serve.cmd` / `scripts/serve.mjs` is the
+  supported launcher and steps to a free port on its own.
+- **`python` on `PATH` is the Windows Store alias**, not a working interpreter —
+  which is why the committed launcher uses Node. The real interpreter is the full
+  conda path above.
+- **The page cannot be opened as a file.** `file://` blocks ES modules and
+  `fetch`, so `explore.js` never runs and the loader hangs on "starting up" with
+  an empty console — the error handler is inside the script that got blocked.
+  There is now a classic (non-module) script in `explore.html` that detects this
+  and explains it on screen; keep it non-module or it will be blocked too.
