@@ -1,0 +1,269 @@
+/* Shared styling for the explorer and the scrollytelling essay.
+   Light surface throughout; the data layers own all the colour. */
+
+:root {
+  --surface: #fcfcfb;
+  --page: #f4f4f1;
+  --ink: #0b0b0b;
+  --ink2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --hairline: rgba(11, 11, 11, 0.1);
+  --obs: #2a78d6;
+  --model: #eb6834;
+  --factory: #4a3aa7;
+  --factory-lit: #f5d000;
+  --map-edge: #84827a;
+  --radius: 12px;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* The explorer has to land inside one screen, and the map is the only element
+     that can absorb the difference -- the chart, the controls, the toggles and
+     the legend all have floors set by legible text and tappable buttons. So the
+     map takes the height left over and derives its width from that.
+
+     The map is the *only* thing that shrinks. The column stays a fixed, readable
+     width and the map is centred inside it, narrower than the chart beneath it.
+     That is deliberate: when the column width was pinned to the map, shrinking
+     the map rewrapped the standfirst, which grew the header, which shrank the map
+     again -- a loop that took two measuring passes to settle. Decoupled, the
+     header is invariant and one pass is exact.
+
+     520px is the no-JS budget: roughly 166 for the header and 337 for the rows
+     under the map. explore.js measures both for real and overwrites --map-w, so
+     this only has to be close enough that the first paint does not jump. */
+  --map-w: clamp(300px, calc((100vh - 520px) * 1.6), 880px);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { line-height: 1.15; letter-spacing: -0.015em; margin: 0 0 0.4em; font-weight: 650; }
+h1 { font-size: clamp(28px, 5vw, 46px); }
+h2 { font-size: clamp(21px, 3vw, 27px); }
+p { margin: 0 0 1em; }
+a { color: var(--obs); }
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+/* A fixed, readable column. The chart, controls and text get all of it; only the
+   map is narrower, so the timeseries has room to spread out and stays legible
+   even when a short viewport has squeezed the map hard. */
+.wrap { max-width: 920px; margin: 0 auto; padding: 18px 20px 44px; }
+.narrow { max-width: 100%; }
+
+/* Compact header: the explorer's title competes with the map for the same
+   screen, so it is sized to introduce rather than to announce. The essay's own
+   hero keeps the large type. */
+.wrap > h1 { font-size: clamp(21px, 2.2vw, 27px); margin-bottom: 0.3em; }
+/* Sized explicitly rather than inheriting 16px: at the column's width every
+   line of standfirst costs the map about 22px of height. */
+#standfirst { font-size: 13.5px; line-height: 1.55; margin-bottom: 0.7em; }
+
+/* ---------- loading ---------- */
+.loader {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  background: var(--page);
+  z-index: 50;
+  text-align: center;
+  transition: opacity 0.5s;
+}
+.loader.done { opacity: 0; pointer-events: none; }
+.loader .bar { width: 220px; height: 3px; background: var(--grid); border-radius: 2px; overflow: hidden; }
+.loader .bar i { display: block; height: 100%; width: 0; background: var(--obs); transition: width 0.3s; }
+.loader p { color: var(--muted); font-size: 13px; margin: 0; }
+
+/* ---------- panels & controls ---------- */
+.stage {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+/* 8:5 rather than 4:3. The camera fits the view box to the canvas *width*, so a
+   canvas shorter than the view box's own proportions crops latitude off the
+   domain -- at Gosan that would cut the northern plants and part of the plume.
+   The binding site is Ridge Hill at 28 deg lat over 45 deg lon (0.622); 8:5
+   shows 0.625, so both sites fit with nothing lost and almost nothing wasted. */
+.map-shell {
+  position: relative;
+  width: min(100%, var(--map-w));
+  margin: 0 auto;
+  aspect-ratio: 8 / 5;
+}
+.map-shell canvas { display: block; width: 100%; height: 100%; }
+
+/* Currently unused: the prose readout is not in explore.html. Kept so that
+   re-adding the markup brings its styling back with it. */
+.readout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--hairline);
+  font-size: 13px;
+  color: var(--ink2);
+}
+.readout b { color: var(--ink); font-weight: 600; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--muted); transition: background 0.25s; }
+
+/* The chart shrinks with the viewport too, or on a 900px-tall screen the fixed
+   rows eat everything and the map has nothing left. The floor is where the plot
+   area stops being readable once timeseries.js takes its 58px of padding. */
+.ts-shell { height: clamp(120px, 17vh, 172px); padding: 4px 6px 0; }
+.ts-shell canvas { display: block; width: 100%; height: 100%; }
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 12px;
+  flex-wrap: wrap;
+}
+button {
+  appearance: none;
+  border: 1px solid var(--axis);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 84px;
+}
+button:hover { background: #f1f1ed; }
+button:focus-visible { outline: 2px solid var(--obs); outline-offset: 2px; }
+button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+
+input[type="range"] { flex: 1; min-width: 180px; accent-color: var(--obs); cursor: pointer; height: 24px; }
+input[type="range"]:focus-visible { outline: 2px solid var(--obs); outline-offset: 4px; border-radius: 4px; }
+
+.tstamp {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--ink2);
+  min-width: 168px;
+  text-align: right;
+}
+
+.toggles { display: flex; gap: 6px; padding: 0 16px 10px; flex-wrap: wrap; }
+.toggles button { min-width: 0; padding: 5px 10px; font-size: 12px; font-weight: 500; }
+
+.legend { display: flex; gap: 14px; align-items: center; padding: 0 16px 11px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink2); }
+.legend .ramp { width: 90px; height: 8px; border-radius: 4px; border: 1px solid var(--hairline); }
+.legend .item { display: flex; align-items: center; gap: 7px; }
+/* Echoes the canvas marker: same hue, same diamond silhouette, same grey edge,
+   so the legend key and the thing on the map are recognisably one mark. */
+.legend .diamond {
+  width: 8px;
+  height: 8px;
+  background: var(--factory);
+  border: 1.5px solid var(--map-edge);
+  transform: rotate(45deg);
+  border-radius: 1px;
+  flex: none;
+}
+.legend .diamond.lit { background: var(--factory-lit); }
+
+.note { font-size: 12px; line-height: 1.55; color: var(--muted); margin: 14px 2px 0; }
+.note code { background: #eeeeea; padding: 1px 6px; border-radius: 5px; color: var(--ink2); font-size: 11.5px; }
+
+/* ---------- data table (the accessibility fallback for the chart) ---------- */
+/* Capped well under the map's height: opening the table is a detour into the
+   numbers, not a reason for the rest of the explorer to leave the screen. */
+.table-wrap { max-height: 200px; overflow: auto; border-top: 1px solid var(--hairline); display: none; }
+.table-wrap.open { display: block; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 5px 16px; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink2); font-weight: 600; }
+
+/* ---------- scrollytelling ---------- */
+.hero { max-width: 660px; margin: 0 auto; padding: 22vh 20px 14vh; }
+.hero .sub { font-size: 18px; color: var(--ink2); }
+
+.scrolly { position: relative; display: grid; grid-template-columns: 1fr minmax(320px, 420px); gap: 40px; align-items: start; max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+.graphic { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+.graphic .stage { box-shadow: 0 1px 3px rgba(11, 11, 11, 0.05); }
+
+.steps { padding: 30vh 0 40vh; }
+.step { min-height: 92vh; display: flex; align-items: center; }
+.step > div {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  opacity: 0.32;
+  transform: translateY(6px);
+  transition: opacity 0.4s, transform 0.4s;
+}
+.step.active > div { opacity: 1; transform: none; }
+.step h2 { margin-bottom: 0.35em; }
+.step p:last-child { margin-bottom: 0; }
+.step .stat { font-size: 34px; font-weight: 650; letter-spacing: -0.02em; display: block; line-height: 1.1; margin-bottom: 2px; }
+.step .stat + .cap { font-size: 12.5px; color: var(--muted); display: block; margin-bottom: 12px; }
+
+.station-photo { width: 100%; border-radius: 10px; border: 1px solid var(--hairline); display: block; }
+figure { margin: 14px 0 0; }
+figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+.outro { max-width: 660px; margin: 0 auto; padding: 12vh 20px 20vh; }
+
+@media (max-width: 860px) {
+  .scrolly { grid-template-columns: 1fr; gap: 0; }
+  .graphic { height: 62vh; top: 0; padding-top: 8px; background: linear-gradient(var(--page) 82%, transparent); z-index: 2; }
+  .steps { padding: 6vh 0 30vh; }
+  .step { min-height: 74vh; }
+  /* On a portrait screen the constraint is width, not height, so the map takes
+     the full column and can afford to be taller -- scrolling is expected there. */
+  .map-shell { width: 100%; aspect-ratio: 4 / 3; }
+}
+
+/* ---------- short viewports ----------
+   A 1600x900 or smaller screen cannot hold the roomy header *and* a usable map,
+   so on those the header gives way: the eyebrow goes, the title drops a few
+   points, and the paddings tighten. The map keeps its size, because it is the
+   thing the page is for. Below about 800px of viewport the explorer scrolls a
+   little however hard this tries -- a stacked map plus chart plus controls just
+   does not fit, and shrinking the map further would make it useless. */
+@media (min-width: 861px) and (max-height: 820px) {
+  .wrap { padding-top: 12px; }
+  .wrap .eyebrow { display: none; }
+  .wrap > h1 { font-size: clamp(19px, 1.7vw, 22px); margin-bottom: 0.25em; }
+  #standfirst { font-size: 12px; margin-bottom: 0.6em; }
+  .readout { padding: 7px 16px; }
+  .controls { padding: 8px 16px 10px; }
+  .toggles { padding: 0 16px 8px; }
+  .legend { padding: 0 16px 9px; }
+  /* The footnote stays. It sits below the stage, so it costs the fit nothing,
+     and it is where the provenance and the limits of the plant layer are
+     stated -- not something to drop for a few pixels. */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+}

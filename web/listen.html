@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listen · Gosan</title>
+<link rel="stylesheet" href="css/essay.css">
+<style>
+/* Page-local, like the sound lab's block: essay.css is shared with the
+   explorer, and the explorer has no volume control to style. */
+
+/* The shared rule gives every range `flex: 1; min-width: 180px`, which is right
+   for the timeline and wrong for a volume slider sitting beside it -- two
+   sliders splitting the row makes the timeline half as precise to scrub. */
+#vol {
+  flex: 0 0 84px;
+  min-width: 84px;
+  margin: 0;
+}
+.vol-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* The score around the playhead. Its height feeds explorer.js's one-screen fit
+   -- the map is the only thing that flexes, so every pixel here comes off the
+   map. 170 is about the floor at which the region bands stay legible. */
+.roll-shell { padding: 0 16px 10px; }
+#roll {
+  width: 100%;
+  height: 170px;
+  display: block;
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+@media (max-height: 780px) {
+  #roll { height: 132px; }
+}
+.tuned {
+  margin: 5px 0 0;
+  min-height: 15px;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+</style>
+</head>
+<body>
+
+<div class="loader" id="loader">
+  <div class="bar"><i id="loadBar"></i></div>
+  <p id="loadMsg">starting up</p>
+</div>
+
+<!-- A classic script, deliberately not a module: over file:// the module below
+     is blocked by CORS and never runs, so the loader would sit on "starting up"
+     with no explanation. This one still executes, and says why. -->
+<script>
+if (location.protocol === 'file:') {
+  document.getElementById('loadBar').style.background = '#eb6834';
+  document.getElementById('loadMsg').innerHTML =
+    '<strong>This page has to be served over HTTP.</strong><br>' +
+    'Opened straight from the filesystem, the browser blocks ES modules and ' +
+    '<code>fetch</code>, so nothing can load.<br><br>' +
+    'Double-click <code>serve.cmd</code> in the project root — or run<br>' +
+    '<code>node scripts/serve.mjs</code><br>' +
+    'and open the <code>http://localhost:…</code> address it prints.';
+}
+</script>
+
+<div class="wrap">
+  <p class="eyebrow">Listen</p>
+  <h1 id="title">What was the sensor breathing?</h1>
+  <p class="narrow" id="standfirst" style="color:var(--ink2)"></p>
+  <p class="narrow" style="font-size:13px;color:var(--muted);margin-top:-4px">
+    Proof of concept — Gosan, HFC-23, Jun–Aug 2016, the dataset the sonification was
+    tuned against. Also: <a href="sound-lab.html">sound lab</a> ·
+    <a href="explore.html">explorer, no sound</a>
+  </p>
+
+  <div class="stage">
+    <div class="map-shell"><canvas id="map" aria-label="Map of the footprint for the selected hour"></canvas></div>
+
+    <div class="ts-shell">
+      <canvas id="ts" aria-label="Observed mole fraction at the station through the period"></canvas>
+    </div>
+
+    <div class="roll-shell">
+      <canvas id="roll" aria-label="The score around the playhead: pitch vertically, region on the axis"></canvas>
+      <!-- Filled while the sound lab is open in another tab, whether or not it
+           has retuned anything yet. Saying "connected" with nothing moved looks
+           redundant but is the point: silence here used to mean both "no lab
+           open" and "the link is broken", and there was no way to tell. -->
+      <p class="tuned" id="tuned" aria-live="polite"></p>
+    </div>
+
+    <div class="controls">
+      <button id="play" aria-label="Play or pause the map and the sound together">Play</button>
+      <input id="slider" type="range" min="0" max="0" value="0" step="1" aria-label="Timestep">
+      <span class="vol-wrap">
+        <label for="vol">vol</label>
+        <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
+      </span>
+      <span class="tstamp" id="tstamp">—</span>
+    </div>
+
+    <!-- Stays hidden: listen.js pins the gas to HFC-23, so explorer.js never
+         builds the switcher. Kept so this page and explore.html present the same
+         markup contract to the module they both mount. -->
+    <div class="toggles" id="speciesRow" hidden>
+      <span style="font-size:12px;color:var(--muted);align-self:center;margin-right:2px">Gas:</span>
+    </div>
+
+    <div class="toggles">
+      <button id="tFootprint" aria-pressed="true">Footprint</button>
+      <button id="tFlux" aria-pressed="false">Emissions map</button>
+      <button id="tFactories" aria-pressed="false">Factories</button>
+      <button id="tParticles" aria-pressed="false">Particles</button>
+      <button id="tModel" aria-pressed="false">Modelled</button>
+      <button id="tZoom" aria-pressed="false">Zoom in</button>
+      <button id="tTable" aria-pressed="false">Data table</button>
+    </div>
+
+    <div class="legend">
+      <span class="item"><span class="ramp" id="rampFp"></span> footprint sensitivity (low → high)</span>
+      <span class="item" id="fluxLegend" hidden><span class="ramp" id="rampFlux"></span> methane emissions</span>
+      <span class="item" id="factoryLegend" hidden>
+        <span class="diamond"></span> <span id="factoryLegendText">reported plants</span>
+        <span class="diamond lit" style="margin-left:10px"></span> <span id="factoryLitText">plume overhead</span>
+      </span>
+    </div>
+
+    <div class="table-wrap" id="tableWrap">
+      <table id="dataTable">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="note" id="soundNote" style="font-size:12.5px;color:var(--muted);line-height:1.5"></p>
+  <p class="note" id="footnote"></p>
+</div>
+
+<script type="module" src="js/listen.js"></script>
+</body>
+</html>

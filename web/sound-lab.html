@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound lab · footprint sonification</title>
+<link rel="stylesheet" href="css/essay.css">
+<style>
+/* Lab-only styling. essay.css is shared with the explorer and the essay, so
+   nothing here goes in it -- this page is a workbench, not part of the piece. */
+.lab { max-width: 1100px; }
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--grid);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin: 0 0 14px;
+}
+.panel h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 18px; }
+
+button {
+  font: inherit; font-size: 13px; padding: 6px 13px; border-radius: 999px;
+  border: 1px solid var(--grid); background: var(--surface); color: var(--ink2);
+  cursor: pointer;
+}
+button:hover { border-color: var(--axis); }
+button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+button.primary { background: var(--obs); color: #fff; border-color: var(--obs); font-weight: 600; min-width: 84px; }
+
+label.slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px;
+  font-size: 12px; color: var(--ink2); align-items: center; }
+label.slider input { grid-column: 1 / -1; width: 100%; margin: 0; }
+label.slider b { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+
+#roll { width: 100%; height: 260px; display: block; border-radius: 8px; background: var(--surface); }
+#timeline { width: 100%; margin: 10px 0 0; }
+.tstamp { font-size: 13px; color: var(--ink2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+table.stats { border-collapse: collapse; font-size: 13px; width: 100%; }
+table.stats th, table.stats td { text-align: left; padding: 3px 12px 3px 0; vertical-align: top; }
+table.stats th { color: var(--muted); font-weight: 500; }
+table.stats td { font-variant-numeric: tabular-nums; }
+
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  border: 1px solid var(--map-edge); vertical-align: -1px; margin-right: 5px; }
+.reg { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+.reg .n { color: var(--muted); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
+.silent { opacity: 0.5; }
+.note { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+kbd { font: inherit; font-size: 11px; background: var(--page); border: 1px solid var(--grid);
+  border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+
+<div class="loader" id="loader">
+  <div class="bar"><i id="loadBar"></i></div>
+  <p id="loadMsg">starting up</p>
+</div>
+
+<script>
+if (location.protocol === 'file:') {
+  document.getElementById('loadBar').style.background = '#eb6834';
+  document.getElementById('loadMsg').innerHTML =
+    '<strong>This page has to be served over HTTP.</strong><br>' +
+    'Opened straight from the filesystem, the browser blocks ES modules and ' +
+    '<code>fetch</code>, so nothing can load.<br><br>' +
+    'Double-click <code>serve.cmd</code> in the project root — or run<br>' +
+    '<code>node scripts/serve.mjs</code><br>' +
+    'and open the <code>http://localhost:…</code> address it prints.';
+}
+</script>
+
+<div class="wrap lab">
+  <p class="eyebrow">Sound lab</p>
+  <h1 id="title">Hearing the footprint</h1>
+  <p class="narrow" style="color:var(--ink2)" id="standfirst"></p>
+
+  <div class="panel">
+    <div class="row">
+      <button id="play" class="primary">Play</button>
+      <span class="tstamp" id="tstamp">—</span>
+      <span class="tstamp" id="barPos" style="color:var(--muted)"></span>
+      <span style="margin-left:auto"></span>
+      <label class="slider" style="min-width:150px"><span>master <b id="vMaster">0.80</b></span>
+        <input id="master" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+    </div>
+    <input id="timeline" type="range" min="0" max="0" value="0" step="1" aria-label="Step">
+    <canvas id="roll" aria-label="The score around the playhead"></canvas>
+    <p class="note" style="margin:8px 0 0">
+      <kbd>space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> one step ·
+      <kbd>shift</kbd>+<kbd>←</kbd><kbd>→</kbd> one day. Scrubbing auditions the step under the cursor.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h3>Layers</h3>
+    <div class="row" id="mixer"></div>
+    <p class="note" style="margin:10px 0 0" id="honesty"></p>
+  </div>
+
+  <div class="panel">
+    <h3>Regions</h3>
+    <div id="regions"></div>
+    <p class="note" style="margin:8px 0 0">
+      Regions are hand-drawn lat/lon boxes — the plant list carries coordinates and nothing else,
+      no country and no name. They say “roughly this part of the map”, not “this administrative area”.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h3>Mapping</h3>
+    <div class="grid2" id="knobs"></div>
+    <p class="note" style="margin:10px 0 0">
+      Changing anything here rebuilds the score in place; playback keeps its position.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h3>What the score came out as</h3>
+    <table class="stats"><tbody id="stats"></tbody></table>
+  </div>
+
+  <p class="note" id="footnote"></p>
+</div>
+
+<script type="module" src="js/sound-lab.js"></script>
+</body>
+</html>

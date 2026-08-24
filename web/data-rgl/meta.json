@@ -1,0 +1,180 @@
+{
+  "station": {
+    "id": "RGL",
+    "name": "Ridge Hill, UK",
+    "lat": 51.99747,
+    "lon": -2.53992,
+    "inletMagl": 90.0,
+    "blurb": "Ridge Hill, a transmitter mast in Herefordshire, watching UK and European methane."
+  },
+  "species": [
+    {
+      "key": "ch4",
+      "label": "CH\u2084",
+      "units": "ppb",
+      "hasObs": true,
+      "hasModel": true,
+      "nObs": 696,
+      "obsMin": 1919.38,
+      "obsMax": 2176.01
+    }
+  ],
+  "defaultSpecies": "ch4",
+  "view": {
+    "latMin": 36.0,
+    "latMax": 64.0,
+    "lonMin": -25.0,
+    "lonMax": 20.0
+  },
+  "footprint": {
+    "atlas": {
+      "file": "fp_atlas.png",
+      "cols": 27,
+      "rows": 26,
+      "tileW": 127,
+      "tileH": 120
+    },
+    "grid": {
+      "nx": 127,
+      "ny": 120,
+      "lonMin": -24.859999656677246,
+      "lonMax": 19.843998908996582,
+      "latMin": 35.88399887084961,
+      "latMax": 63.9640007019043
+    },
+    "logMin": -4.339358675904037,
+    "logMax": 0.35309458658100523,
+    "logDisplayMax": -1.1106973087787537,
+    "nTime": 696,
+    "sizeMB": 1.51
+  },
+  "flux": {
+    "logMin": -11.5,
+    "logMax": -7.0,
+    "file": "flux.png",
+    "species": "ch4"
+  },
+  "fluxHires": {
+    "logMin": -11.5,
+    "logMax": -7.0,
+    "year": 2021,
+    "source": "EDGAR v7.0_FT2021, 0.1 x 0.1 deg, summed from sector grids",
+    "ungroupedSectors": [
+      "TRO_noRES",
+      "TNR_Ship",
+      "TNR_Other"
+    ],
+    "publishedTotalsRatio": 0.9998,
+    "grid": {
+      "latMin": 35.999999234326,
+      "latMax": 64.000000765674,
+      "lonMin": -25.000012221474424,
+      "lonMax": 20.000000777382628,
+      "nLat": 280,
+      "nLon": 450
+    },
+    "totalTgPerYear": 18.5086,
+    "layers": {
+      "total": {
+        "file": "flux_hi.png",
+        "label": "All methane",
+        "sectors": null,
+        "tgPerYear": 18.5086,
+        "shareOfView": 100.0
+      },
+      "farming": {
+        "file": "src_farming.png",
+        "label": "Cows and farming",
+        "sectors": [
+          "ENF",
+          "MNM",
+          "AGS",
+          "AWB"
+        ],
+        "tgPerYear": 9.1619,
+        "shareOfView": 49.5
+      },
+      "waste": {
+        "file": "src_waste.png",
+        "label": "Rubbish and sewage",
+        "sectors": [
+          "SWD_LDF",
+          "SWD_INC",
+          "WWT"
+        ],
+        "tgPerYear": 5.1563,
+        "shareOfView": 27.86
+      },
+      "fossil": {
+        "file": "src_fossil.png",
+        "label": "Oil and gas",
+        "sectors": [
+          "PRO",
+          "FFF",
+          "REF_TRF",
+          "ENE",
+          "RCO",
+          "IND",
+          "IRO",
+          "CHE"
+        ],
+        "tgPerYear": 4.1248,
+        "shareOfView": 22.29
+      }
+    }
+  },
+  "factories": null,
+  "wind": {
+    "atlas": {
+      "u": "wind_u.png",
+      "v": "wind_v.png",
+      "cols": 16,
+      "rows": 15,
+      "tileW": 105,
+      "tileH": 120
+    },
+    "layout": "two-l8",
+    "grid": {
+      "nx": 105,
+      "ny": 120,
+      "lonMin": -24.859999656677246,
+      "lonMax": 12.09999942779541,
+      "latMin": 35.88399887084961,
+      "latMax": 63.9640007019043
+    },
+    "uvMax": 40.0,
+    "nTime": 232,
+    "frameStride": 3,
+    "framesCovered": 694,
+    "levelIndex": 2,
+    "levelLabel": "100 m",
+    "source": "data/met/RGL_wind_100m_202002.nc",
+    "sourceVars": "eastward_wind, northward_wind",
+    "sizeMB": 2.56,
+    "stationCorr": {
+      "speed": 0.9394,
+      "biasMs": 0.013,
+      "rmseMs": 1.499,
+      "dirDeg": 7.38,
+      "dirMedianDeg": 4.86
+    }
+  },
+  "series": {
+    "species": [
+      {
+        "key": "ch4",
+        "label": "CH\u2084",
+        "units": "ppb",
+        "hasObs": true,
+        "hasModel": true,
+        "nObs": 696,
+        "obsMin": 1919.38,
+        "obsMax": 2176.01
+      }
+    ],
+    "defaultSpecies": "ch4",
+    "hasLandFrac": true,
+    "nTime": 696
+  },
+  "timeStepHours": 1
+}

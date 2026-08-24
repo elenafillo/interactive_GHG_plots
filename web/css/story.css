@@ -1,0 +1,300 @@
+/* Presenter deck.
+   Separate from essay.css on purpose: the explorer fits a document into one
+   screen, this fills the screen with one picture. Sharing a stylesheet would
+   mean every rule here needing a scope, and every rule there needing to survive
+   a layout it was never written for. The colour tokens are copied rather than
+   imported for the same reason -- they are the palette's public values and they
+   do not move. */
+
+:root {
+  --surface: #fcfcfb;
+  --page: #f4f4f1;
+  --ink: #0b0b0b;
+  --ink2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --hairline: rgba(11, 11, 11, 0.1);
+  --obs: #2a78d6;
+  --model: #eb6834;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --chart-h: 0px;
+  --gutter: clamp(16px, 2.4vw, 34px);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;              /* a deck never scrolls */
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body.with-chart { --chart-h: clamp(150px, 24vh, 240px); }
+
+/* ---- loader ------------------------------------------------------------ */
+
+.loader {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--page);
+  transition: opacity 0.35s ease;
+}
+.loader.done { opacity: 0; pointer-events: none; }
+.loader .bar { width: min(320px, 60vw); height: 3px; background: var(--grid); border-radius: 2px; overflow: hidden; }
+.loader .bar i { display: block; height: 100%; width: 0; background: var(--obs); transition: width 0.3s ease; }
+.loader p { margin: 0; font-size: 14px; color: var(--ink2); text-align: center; max-width: 44ch; line-height: 1.55; }
+.loader code { font-size: 13px; background: var(--surface); padding: 1px 5px; border-radius: 4px; }
+
+/* ---- stage ------------------------------------------------------------- */
+
+.stage { position: relative; width: 100vw; height: 100vh; }
+
+#map {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: var(--chart-h);
+  width: 100%;
+  height: calc(100% - var(--chart-h));
+  display: block;
+}
+
+/* ---- caption ----------------------------------------------------------- */
+
+.hud {
+  position: absolute;
+  left: var(--gutter);
+  bottom: calc(var(--chart-h) + var(--gutter));
+  max-width: min(52ch, 60vw);
+  z-index: 10;
+}
+
+.caption {
+  margin: 0;
+  /* Read from the back of a room. This is the one thing on screen that has to
+     survive a projector and a bright hall. */
+  font-size: clamp(22px, 2.7vw, 36px);
+  font-weight: 620;
+  line-height: 1.22;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  background: rgba(252, 252, 251, 0.9);
+  border-radius: 12px;
+  padding: 0.5em 0.7em;
+  box-shadow: 0 1px 0 var(--hairline), 0 10px 30px rgba(11, 11, 11, 0.07);
+}
+
+/* ---- smell meter ------------------------------------------------------- */
+
+/* How much the mast is smelling, as a share of the month's range. No units and
+   no number by default -- "a little" to "a lot" is the whole claim, and a figure
+   next to it is a second thing to read. N reveals the number for the presenter. */
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(252, 252, 251, 0.9);
+  border-radius: 999px;
+  width: fit-content;
+  box-shadow: 0 1px 0 var(--hairline);
+}
+.meter-label { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.meter-track {
+  position: relative;
+  width: clamp(120px, 16vw, 220px);
+  height: 10px;
+  border-radius: 999px;
+  background: var(--grid);
+  overflow: hidden;
+}
+.meter-track i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fbc4a8, var(--model));
+  transition: width 0.18s ease-out;
+}
+.meter-num { font-size: 13px; color: var(--ink2); font-variant-numeric: tabular-nums; display: none; }
+body.show-number .meter-num { display: inline; }
+
+/* ---- chart ------------------------------------------------------------- */
+
+.chart-shell {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--chart-h);
+  background: var(--surface);
+  border-top: 1px solid var(--hairline);
+  z-index: 8;
+}
+.chart-shell canvas { width: 100%; height: 100%; display: block; }
+.chart-lo, .chart-hi {
+  position: absolute;
+  left: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  z-index: 1;
+  pointer-events: none;
+}
+.chart-lo { bottom: 34px; }
+.chart-hi { top: 8px; }
+
+/* ---- dots, stamp, nav, pill -------------------------------------------- */
+
+.dots {
+  position: absolute;
+  top: var(--gutter);
+  right: var(--gutter);
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.dot.on { background: var(--ink); border-color: var(--ink); }
+
+.stamp {
+  position: absolute;
+  right: var(--gutter);
+  bottom: calc(var(--chart-h) + var(--gutter));
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink2);
+  background: rgba(252, 252, 251, 0.86);
+  padding: 5px 11px;
+  border-radius: 999px;
+  z-index: 10;
+}
+
+.nav {
+  position: absolute;
+  right: var(--gutter);
+  top: calc(var(--gutter) + 26px);
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+.nav button {
+  font-size: 16px;
+  line-height: 1;
+  padding: 7px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(252, 252, 251, 0.86);
+  color: var(--ink2);
+  cursor: pointer;
+}
+.nav button:hover { color: var(--ink); }
+
+/* Says what is not built yet, rather than dropping the slide silently. */
+.pill {
+  position: absolute;
+  left: 50%;
+  top: var(--gutter);
+  transform: translateX(-50%);
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink2);
+  background: rgba(252, 252, 251, 0.9);
+  border: 1px dashed var(--muted);
+  padding: 5px 12px;
+  border-radius: 999px;
+  z-index: 10;
+}
+
+/* ---- presenter scrubber ------------------------------------------------ */
+
+.scrubber {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--chart-h) + 12px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  background: rgba(252, 252, 251, 0.96);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  box-shadow: 0 8px 26px rgba(11, 11, 11, 0.1);
+  z-index: 20;
+  font-size: 12px;
+  color: var(--ink2);
+}
+.scrubber input[type="range"] { width: clamp(180px, 30vw, 420px); accent-color: var(--obs); }
+.scrub-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.scrub-anchor { color: var(--muted); white-space: nowrap; }
+.scrub-help { color: var(--muted); white-space: nowrap; }
+
+/* Contrast knobs for the sources card, on their own line under the scrubber.
+   Presenter-only chrome, so it inherits the panel's rule that numbers are
+   allowed here and nowhere else on screen. Hidden unless `?tune=1`.
+
+   The `[hidden]` rule is not redundant. `display: flex` below is an *author*
+   declaration and the browser's `[hidden] { display: none }` is a user-agent
+   one, so the class would win the cascade and the attribute would do nothing
+   at all. Anything here that declares `display` has to say this for itself. */
+.scrub-look[hidden] { display: none; }
+.scrub-look {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+  color: var(--ink2);
+}
+.scrub-look-title { color: var(--muted); white-space: nowrap; }
+.scrub-look label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.scrub-look input[type="number"] {
+  width: 68px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.scrubber button {
+  font-size: 12px;
+  padding: 4px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink2);
+  cursor: pointer;
+}
+
+/* Portrait phones get a readable caption over a shorter map rather than a
+   layout of their own -- the deck is for a projector, this is just triage. */
+@media (max-width: 720px) {
+  .hud { max-width: none; right: var(--gutter); }
+  .caption { font-size: 20px; }
+  .scrub-help, .scrub-anchor { display: none; }
+}

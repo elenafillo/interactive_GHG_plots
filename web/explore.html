@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Footprint explorer · Ridge Hill</title>
+<link rel="stylesheet" href="css/essay.css">
+</head>
+<body>
+
+<div class="loader" id="loader">
+  <div class="bar"><i id="loadBar"></i></div>
+  <p id="loadMsg">starting up</p>
+</div>
+
+<!-- A classic script, deliberately not a module: over file:// the module below
+     is blocked by CORS and never runs, so the loader would sit on "starting up"
+     with no explanation. This one still executes, and says why. -->
+<script>
+if (location.protocol === 'file:') {
+  document.getElementById('loadBar').style.background = '#eb6834';
+  document.getElementById('loadMsg').innerHTML =
+    '<strong>This page has to be served over HTTP.</strong><br>' +
+    'Opened straight from the filesystem, the browser blocks ES modules and ' +
+    '<code>fetch</code>, so nothing can load.<br><br>' +
+    'Double-click <code>serve.cmd</code> in the project root — or run<br>' +
+    '<code>node scripts/serve.mjs</code><br>' +
+    'and open the <code>http://localhost:…</code> address it prints.';
+}
+</script>
+
+<div class="wrap">
+  <p class="eyebrow">Footprint explorer</p>
+  <h1 id="title">What was the sensor breathing?</h1>
+  <p class="narrow" id="standfirst" style="color:var(--ink2)"></p>
+  <p class="narrow" style="font-size:13px;color:var(--muted);margin-top:-4px">
+    Datasets:
+    <a href="?data=data-rgl/">Ridge Hill · CH₄ · Feb 2020</a> ·
+    <a href="?data=data-gsn/">Gosan · HFC-23 &amp; CFC-11 · Jun–Aug 2016</a> ·
+    <a href="?data=data-gsn-2021/">Gosan · HFC-23 · Feb–May 2021</a>
+  </p>
+
+  <div class="stage">
+    <div class="map-shell"><canvas id="map" aria-label="Map of the footprint for the selected hour"></canvas></div>
+
+    <!-- The plain-language readout ("the footprint is sitting over land…") lived
+         here. Removed for now; explore.js still computes the driver behind it and
+         skips the DOM update when the element is absent, so putting this back is
+         re-adding the markup and nothing else. -->
+
+    <div class="ts-shell">
+      <canvas id="ts" aria-label="Observed methane at the station through February 2020"></canvas>
+    </div>
+
+    <div class="controls">
+      <button id="play" aria-label="Play or pause">Play</button>
+      <input id="slider" type="range" min="0" max="0" value="0" step="1" aria-label="Timestep">
+      <span class="tstamp" id="tstamp">—</span>
+    </div>
+
+    <div class="toggles" id="speciesRow" hidden>
+      <span style="font-size:12px;color:var(--muted);align-self:center;margin-right:2px">Gas:</span>
+    </div>
+
+    <div class="toggles">
+      <button id="tFootprint" aria-pressed="true">Footprint</button>
+      <button id="tFlux" aria-pressed="false">Emissions map</button>
+      <button id="tFactories" aria-pressed="false">Factories</button>
+      <button id="tParticles" aria-pressed="false">Particles</button>
+      <button id="tModel" aria-pressed="false">Modelled</button>
+      <button id="tZoom" aria-pressed="false">Zoom in</button>
+      <button id="tTable" aria-pressed="false">Data table</button>
+    </div>
+
+    <div class="legend">
+      <span class="item"><span class="ramp" id="rampFp"></span> footprint sensitivity (low → high)</span>
+      <span class="item" id="fluxLegend" hidden><span class="ramp" id="rampFlux"></span> methane emissions</span>
+      <span class="item" id="factoryLegend" hidden>
+        <span class="diamond"></span> <span id="factoryLegendText">reported plants</span>
+        <span class="diamond lit" style="margin-left:10px"></span> <span id="factoryLitText">plume overhead</span>
+      </span>
+    </div>
+
+    <div class="table-wrap" id="tableWrap">
+      <table id="dataTable">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="note" id="footnote"></p>
+</div>
+
+<script type="module" src="js/explore.js"></script>
+</body>
+</html>

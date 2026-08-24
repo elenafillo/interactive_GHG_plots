@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Can I smell it? · Ridge Hill</title>
+<link rel="stylesheet" href="css/story.css">
+</head>
+<body>
+
+<div class="loader" id="loader">
+  <div class="bar"><i id="loadBar"></i></div>
+  <p id="loadMsg">starting up</p>
+</div>
+
+<!-- A classic script, deliberately not a module: over file:// the module below
+     is blocked by CORS and never runs, so the loader would sit on "starting up"
+     with no explanation. This one still executes, and says why. -->
+<script>
+if (location.protocol === 'file:') {
+  document.getElementById('loadBar').style.background = '#eb6834';
+  document.getElementById('loadMsg').innerHTML =
+    '<strong>This page has to be served over HTTP.</strong><br>' +
+    'Opened straight from the filesystem, the browser blocks ES modules and ' +
+    '<code>fetch</code>, so nothing can load.<br><br>' +
+    'Double-click <code>serve.cmd</code> in the project root — or run<br>' +
+    '<code>node scripts/serve.mjs</code><br>' +
+    'and open the <code>http://localhost:…</code> address it prints.';
+}
+</script>
+
+<main class="stage">
+  <canvas id="map" aria-label="Map showing where the air at Ridge Hill came from"></canvas>
+
+  <!-- Progress through the acts. Buttons, so it is navigable without the keys. -->
+  <nav class="dots" id="dots" aria-label="Slides"></nav>
+
+  <p class="pill" id="pill" hidden>wind animation — coming in part two</p>
+
+  <div class="chart-shell" id="chartShell" hidden>
+    <span class="chart-lo">a little</span>
+    <span class="chart-hi">a lot</span>
+    <canvas id="ts" aria-label="How much methane the mast smelled through February"></canvas>
+  </div>
+
+  <div class="hud">
+    <p class="caption" id="caption"></p>
+
+    <div class="meter" id="meter" hidden>
+      <span class="meter-label">a little</span>
+      <span class="meter-track"><i id="meterFill"></i></span>
+      <span class="meter-label">a lot</span>
+      <span class="meter-num" id="meterNum"></span>
+    </div>
+  </div>
+
+  <p class="stamp" id="stamp"></p>
+
+  <div class="nav">
+    <button id="prev" aria-label="Previous slide">←</button>
+    <button id="next" aria-label="Next slide">→</button>
+  </div>
+
+  <!-- Presenter-only. Hidden until T, and the only chrome that shows numbers. -->
+  <div class="scrubber" id="scrubber" hidden>
+    <input id="scrubRange" type="range" min="0" max="0" value="0" step="1"
+           aria-label="Move this slide's moment">
+    <span class="scrub-time" id="scrubTime">—</span>
+    <span class="scrub-anchor" id="scrubAnchor">—</span>
+    <button id="copyFrames">copy frames</button>
+    <button id="clearFrames">reset</button>
+    <span class="scrub-help">[ ] nudge ±1h · shift ±6h · G squares/smooth</span>
+
+    <!-- Contrast on the sources card. Defaults and the reasoning behind them
+         live in SOURCE_DISPLAY in js/palette.js; these are the same three
+         numbers, turnable on the screen you are actually presenting on.
+
+         Off the panel by default: the window is settled, and three number
+         boxes a stray click can move are a liability on stage rather than an
+         affordance. `story.html?tune=1` brings the row back -- which is also
+         the only way to reach `reset`, so a stored look can still be cleared. -->
+    <div class="scrub-look" id="lookRow" hidden>
+      <span class="scrub-look-title">sources contrast</span>
+      <label>hide below 10^<input id="lookFloor" type="number" step="0.25" value="-9.75"></label>
+      <label>full at 10^<input id="lookCeil" type="number" step="0.25" value="-7"></label>
+      <label>stretch <input id="lookGamma" type="number" step="0.05" min="0.2" max="4" value="1.35"></label>
+      <button id="copyLook">copy</button>
+      <button id="resetLook">reset</button>
+    </div>
+  </div>
+</main>
+
+<script type="module" src="js/story/main.js"></script>
+</body>
+</html>
