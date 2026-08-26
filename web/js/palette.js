@@ -236,6 +236,95 @@ export const SOURCE_DISPLAY = {
 };
 
 /**
+ * The same three knobs, per gas, for a deck whose field is not methane's.
+ *
+ * These are absolute log10 of mol/m2/s, so they cannot be shared between gases:
+ * HFC-23's entire field inside the Gosan view runs 10^-21.4 to 10^-10.1, which
+ * is *below* methane's floor everywhere. Handing it `SOURCE_DISPLAY` paints the
+ * map empty -- not dim, empty -- which is a blank slide with a caption pointing
+ * at it.
+ *
+ * ⚠ **Gosan's are a measured starting point, not a tuned look.** The floor is
+ * where the top 95% of the view's mass sits and the ceiling is the field
+ * maximum. Methane's came off a bimodal histogram with a clean valley to put the
+ * floor in; HFC-23's has no valley — one broad hump peaking near 10^-13 — so
+ * there is no principled cut here, only a defensible one. Press `T` and move it.
+ */
+export const SOURCE_DISPLAY_BY_SPECIES = {
+  'hfc-23': { floor: -12.25, ceil: -10.25, gamma: 1.35 },
+  /**
+   * CFC-11's is **not an inventory** — it is 40 Gg/yr spread by 2015
+   * population, the guess an inversion starts from when nothing is known — and
+   * unlike the other two it drives the *coarse* `flux.png` rather than a
+   * sources card, because this deck has no hi-res rasters at all.
+   *
+   * Same rule as HFC-23's, applied to this field: the floor is where the top
+   * 95% of the view's emission sits and the ceiling is the field maximum.
+   * Measured inside the Gosan view (11,628 cells, 6,771 of them positive):
+   * cutting at 10^-12.64 hides **41.5% of the positive cells while discarding
+   * 5.0% of the emission**, and leaves 34% of the view painted.
+   *
+   * ⚠ That 5% is generous next to methane's 0.2%, and it is the honest cost:
+   * this field has **no valley to cut in** — one broad hump peaking at
+   * 10^-12.4 with a long thin tail — so any floor trades cells against
+   * substance on a smooth curve. The alternative worth knowing is **-13.06**,
+   * the 99%-of-emission cut: 25.6% of cells hidden, 1.0% of substance, 43% of
+   * the view painted. That is the one to move to if the map reads too sparse
+   * from the back of the room. Press `T`.
+   */
+  'cfc-11': { floor: -12.65, ceil: -10.7, gamma: 1.35 },
+};
+
+/**
+ * The display window a given export should open on.
+ *
+ * Keyed off `meta.fluxHires.species`, which the exporter writes, so a deck gets
+ * the right window by shipping the right data rather than by anyone remembering
+ * to pass it. An unknown gas falls back to methane's rather than throwing: a
+ * wrong-looking map is recoverable with `T` mid-talk, a dead deck is not.
+ *
+ * @param {object|null} meta  meta.fluxHires
+ */
+export function sourceDisplayFor(meta) {
+  const key = meta && meta.species;
+  return { ...(SOURCE_DISPLAY_BY_SPECIES[key] || SOURCE_DISPLAY) };
+}
+
+/**
+ * The coarse `flux.png`'s LUT, honouring this gas's display window if it has one.
+ *
+ * The hi-res rasters have always separated what the PNG *encodes* from what the
+ * eye *gets*; the coarse one never did, because methane's encoding window and
+ * its display window were the same -11.5..-7.0 pair and `FLUX_LUT` spreading
+ * itself over the whole byte range was already right.
+ *
+ * That stops being true for a gas whose field is encoded wide so it is not
+ * clipped and then wants a narrow slice of that shown. So: a species with an
+ * entry in `SOURCE_DISPLAY_BY_SPECIES` gets a windowed LUT, and **a species
+ * without one gets `FLUX_LUT` itself** — the same object, not an equivalent
+ * rebuild. Ridge Hill's methane map is therefore byte-for-byte what it was.
+ *
+ * @param {object|null} meta     meta.flux, for the encoded range and the species
+ * @param {object|null} display  {floor, ceil, gamma}; defaults to the gas's own
+ */
+export function fluxLUT(meta, display = null) {
+  const win = display || (meta && SOURCE_DISPLAY_BY_SPECIES[meta.species]);
+  if (!meta || !win) return FLUX_LUT;
+  const span = meta.logMax - meta.logMin;
+  const at = (v) => Math.max(0, Math.min(1, (v - meta.logMin) / span));
+  return buildLUT(FLUX_RAMP, {
+    floorAt: at(win.floor),
+    saturateAt: at(win.ceil),
+    rampGamma: win.gamma,
+    // FLUX_LUT's own alphas, so the only thing the window changes is which part
+    // of the field is drawn -- not how solid the drawn part looks.
+    alphaMin: 0.08,
+    alphaMax: 0.9,
+    gamma: 0.7,
+  });
+}
+
+/**
  * One LUT per source family, keyed exactly as `meta.fluxHires.layers`.
  *
  * `total` reuses the violet emissions ramp on purpose: the card opens on the
@@ -248,16 +337,17 @@ export const SOURCE_DISPLAY = {
  * them by eye is the entire point of the card.
  *
  * @param {object} meta     meta.fluxHires, for the encoded range
- * @param {object} display  {floor, ceil, gamma}; defaults to SOURCE_DISPLAY
+ * @param {object} display  {floor, ceil, gamma}; defaults to this gas's window
  */
-export function buildSourceLUTs(meta, display = SOURCE_DISPLAY) {
+export function buildSourceLUTs(meta, display = null) {
+  const win = display || sourceDisplayFor(meta);
   const { logMin, logMax } = meta;
   const span = logMax - logMin;
   const at = (v) => Math.max(0, Math.min(1, (v - logMin) / span));
   const opts = {
-    floorAt: at(display.floor),
-    saturateAt: at(display.ceil),
-    rampGamma: display.gamma,
+    floorAt: at(win.floor),
+    saturateAt: at(win.ceil),
+    rampGamma: win.gamma,
     alphaMin: 0.1,
     alphaMax: 0.95,
     gamma: 0.75,

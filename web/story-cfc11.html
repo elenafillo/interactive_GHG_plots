@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Which one can we smell? · Gosan</title>
+<link rel="stylesheet" href="css/story.css">
+</head>
+<body>
+
+<!-- The third deck. Gosan again -- same island, same footprints -- but CFC-11
+     over June and July 2016, from web/data-gsn-cfc11/.
+
+     Structurally identical to story-gsn.html on purpose: the three pages share
+     css/story.css and deck.js, and every id below is one deck.js looks up by
+     name, so a tag renamed here breaks two pages that are not this one. What
+     differs is the title, the aria-labels and the module at the foot.
+
+     The scrubber's key hint says 2h because this export is 2-hourly too
+     (time_step: 2), so a one-frame nudge is worth the same here as at the
+     HFC-23 deck. -->
+
+<div class="loader" id="loader">
+  <div class="bar"><i id="loadBar"></i></div>
+  <p id="loadMsg">starting up</p>
+</div>
+
+<!-- A classic script, deliberately not a module: over file:// the module below
+     is blocked by CORS and never runs, so the loader would sit on "starting up"
+     with no explanation. This one still executes, and says why. -->
+<script>
+if (location.protocol === 'file:') {
+  document.getElementById('loadBar').style.background = '#eb6834';
+  document.getElementById('loadMsg').innerHTML =
+    '<strong>This page has to be served over HTTP.</strong><br>' +
+    'Opened straight from the filesystem, the browser blocks ES modules and ' +
+    '<code>fetch</code>, so nothing can load.<br><br>' +
+    'Double-click <code>serve.cmd</code> in the project root — or run<br>' +
+    '<code>node scripts/serve.mjs</code><br>' +
+    'and open the <code>http://localhost:…</code> address it prints.';
+}
+</script>
+
+<main class="stage">
+  <canvas id="map" aria-label="Map showing where the air at Gosan came from"></canvas>
+
+  <!-- Progress through the acts. Buttons, so it is navigable without the keys. -->
+  <nav class="dots" id="dots" aria-label="Slides"></nav>
+
+  <p class="pill" id="pill" hidden>wind animation — coming in part two</p>
+
+  <div class="chart-shell" id="chartShell" hidden>
+    <span class="chart-lo">a little</span>
+    <span class="chart-hi">a lot</span>
+    <canvas id="ts" aria-label="How much the station smelled through June and July"></canvas>
+  </div>
+
+  <div class="meter" id="meter" hidden>
+    <span class="meter-label">a lot</span>
+    <span class="meter-track"><i id="meterFill"></i></span>
+    <span class="meter-label">a little</span>
+    <span class="meter-num" id="meterNum"></span>
+  </div>
+
+  <div class="hud">
+    <p class="caption" id="caption"></p>
+  </div>
+
+  <p class="stamp" id="stamp"></p>
+
+  <div class="nav">
+    <button id="prev" aria-label="Previous slide">←</button>
+    <button id="next" aria-label="Next slide">→</button>
+  </div>
+
+  <!-- Presenter-only, and the only chrome that shows numbers. See the note on
+       the same block in story.html for why it carries no `hidden` attribute. -->
+  <div class="scrubber" id="scrubber">
+    <input id="scrubRange" type="range" min="0" max="0" value="0" step="1"
+           aria-label="Move this slide's moment">
+    <span class="scrub-time" id="scrubTime">—</span>
+    <span class="scrub-anchor" id="scrubAnchor">—</span>
+    <button id="copyFrames">copy frames</button>
+    <button id="clearFrames">reset</button>
+    <!-- ±2h, not ±1h: the export is 2-hourly and `nudge` never moves less than
+         a whole frame, so `[` and `]` are worth two hours each here. -->
+    <span class="scrub-help">[ ] nudge ±2h · shift ±6h · G squares/smooth</span>
+
+    <!-- Off the panel by default; `story-cfc11.html?tune=1` brings it back,
+         which is also the only way to reach `reset`. Stored per deck, so a
+         contrast tuned here says nothing about the other two. -->
+    <div class="scrub-look" id="lookRow" hidden>
+      <span class="scrub-look-title">sources contrast</span>
+      <label>hide below 10^<input id="lookFloor" type="number" step="0.25" value="-9.75"></label>
+      <label>full at 10^<input id="lookCeil" type="number" step="0.25" value="-7"></label>
+      <label>stretch <input id="lookGamma" type="number" step="0.05" min="0.2" max="4" value="1.35"></label>
+      <button id="copyLook">copy</button>
+      <button id="resetLook">reset</button>
+    </div>
+  </div>
+</main>
+
+<script type="module" src="js/story/main-cfc11.js"></script>
+</body>
+</html>

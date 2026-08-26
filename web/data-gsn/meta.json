@@ -59,6 +59,33 @@
     "sizeMB": 5.54
   },
   "flux": null,
+  "fluxHires": {
+    "logMin": -18.0,
+    "logMax": -10.0,
+    "species": "hfc-23",
+    "year": 2016,
+    "source": "EDGAR v8.0_FT2022, 0.1 x 0.1 deg, published TOTALS",
+    "ungroupedSectors": null,
+    "publishedTotalsRatio": 1.0,
+    "grid": {
+      "latMin": 22.0,
+      "latMax": 46.0,
+      "lonMin": 105.0,
+      "lonMax": 145.0,
+      "nLat": 240,
+      "nLon": 400
+    },
+    "totalTgPerYear": 0.0067,
+    "layers": {
+      "total": {
+        "file": "flux_hi.png",
+        "label": "Where it is made",
+        "sectors": null,
+        "tgPerYear": 0.0067,
+        "shareOfView": 100.0
+      }
+    }
+  },
   "factories": {
     "source": "factory_locations_EASTASIA.csv",
     "species": "hfc-23",
@@ -282,6 +309,7 @@
       ]
     ]
   },
+  "wind": null,
   "series": {
     "species": [
       {

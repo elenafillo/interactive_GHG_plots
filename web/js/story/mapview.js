@@ -34,7 +34,7 @@
 
 // One directory down from the original, so these reach back up. palette.js is
 // imported read-only and unmodified -- the explorer and the deck share it.
-import { C, footprintLUT, FLUX_LUT, SOURCE_DISPLAY, buildSourceLUTs } from '../palette.js';
+import { C, footprintLUT, FLUX_LUT, fluxLUT, sourceDisplayFor, buildSourceLUTs } from '../palette.js';
 
 /**
  * Map width that leaves the whole explorer inside the viewport.
@@ -116,6 +116,12 @@ export class MapView {
     this.fluxBuf = data.flux ? this._buffer(data.flux.width, data.flux.height) : null;
     this._fluxPainted = false;
 
+    // The coarse map's ramp. `fluxLUT` hands back the shared `FLUX_LUT` itself
+    // for a gas with no window of its own, which is both the right default and
+    // the test below: identity, not equality.
+    this.fluxLUT = fluxLUT(data.meta.flux);
+    this.fluxTunable = this.fluxLUT !== FLUX_LUT;
+
     // Hi-res source rasters. Static for the whole deck, so each is painted into
     // its buffer once on first use and then is a drawImage per frame -- the same
     // bargain flux.png already makes, which is what lets four of them coexist at
@@ -131,9 +137,12 @@ export class MapView {
     // be wrong. At the card's span of 24 deg a cell lands at roughly 8 px, so
     // the squares read as squares.
     //
-    // Applies to these rasters only -- the footprint and the coarse flux keep
-    // the smoothing they already had. `G` toggles it live, which is the quickest
-    // way to compare the two on a real screen.
+    // Applies to every emissions raster -- these four and the coarse `flux.png`
+    // below, which is the same kind of claim on a coarser grid. The **footprint**
+    // keeps its smoothing: that one really is a continuous sensitivity field
+    // sampled onto a grid, so interpolating between cells is honest there and
+    // nowhere else. `G` toggles it live, which is the quickest way to compare
+    // the two on a real screen.
     this.crispSources = true;
     this.srcLayers = { fluxHi: 'total', srcFarming: 'farming', srcWaste: 'waste', srcFossil: 'fossil' };
     this.srcBufs = {};
@@ -142,7 +151,11 @@ export class MapView {
       const img = data.fluxHires && data.fluxHires[key];
       this.srcBufs[layer] = img ? { buf: this._buffer(img.width, img.height), img, key, painted: false } : null;
     }
-    this.sourceDisplay = { ...SOURCE_DISPLAY };
+    // Which raster the contrast panel is for: the sources card where there is
+    // one, and otherwise the coarse map, which on the CFC-11 deck is the only
+    // emissions raster there is. Both other decks keep the card and are
+    // untouched by the fallback.
+    this.sourceDisplay = sourceDisplayFor(data.meta.fluxHires || data.meta.flux);
     this.srcLUTs = data.meta.fluxHires
       ? buildSourceLUTs(data.meta.fluxHires, this.sourceDisplay) : {};
 
@@ -261,16 +274,25 @@ export class MapView {
   }
 
   /**
-   * Retune the sources card's contrast, and repaint.
+   * Retune the emissions contrast, and repaint.
    *
    * The buffers are painted once and cached, so changing the window has to
    * invalidate them -- otherwise the numbers move and the map does not, which
    * looks exactly like the control being broken.
    *
+   * Two rasters can be on the other end of this: the sources card where a deck
+   * has one, and the coarse map where the gas has a window of its own. Never
+   * both -- a deck with a card tunes the card, and Ridge Hill's coarse methane
+   * map keeps the fixed ramp it has always had.
+   *
    * @param {object} d  partial {floor, ceil, gamma}
    */
   setSourceDisplay(d) {
     this.sourceDisplay = { ...this.sourceDisplay, ...d };
+    if (this.fluxTunable) {
+      this.fluxLUT = fluxLUT(this.data.meta.flux, this.sourceDisplay);
+      this._fluxPainted = false;
+    }
     if (!this.data.meta.fluxHires) return this.sourceDisplay;
     this.srcLUTs = buildSourceLUTs(this.data.meta.fluxHires, this.sourceDisplay);
     for (const slot of Object.values(this.srcBufs)) if (slot) slot.painted = false;
@@ -326,12 +348,19 @@ export class MapView {
 
     if (this.layers.flux > 0 && this.fluxBuf) {
       if (!this._fluxPainted) {
-        this._paintRaster(this.fluxBuf, this.data.flux.data, FLUX_LUT);
+        this._paintRaster(this.fluxBuf, this.data.flux.data, this.fluxLUT);
         this._fluxPainted = true;
       }
       cx.save();
       cx.globalAlpha = this.layers.flux;
-      cx.imageSmoothingEnabled = true;
+      // Cells, not a smooth field -- `crispSources`, the same switch the hi-res
+      // rasters take, so `G` means one thing for every emissions layer on the
+      // deck. Smoothing a guess is the wrong way to be wrong: bilinear
+      // upscaling invents a gradient across a boundary the map is asserting,
+      // and it makes an 11 km guess look like a measurement. This layer is the
+      // only place a coarse emissions map is drawn in any deck, so nothing else
+      // moves with it.
+      cx.imageSmoothingEnabled = !this.crispSources;
       cx.imageSmoothingQuality = 'high';
       cx.drawImage(this.fluxBuf.cv, ...this._gridRect(this.data.grid));
       cx.restore();

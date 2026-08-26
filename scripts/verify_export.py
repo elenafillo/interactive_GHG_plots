@@ -13,6 +13,7 @@ looking at the same numbers the notebook is.
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import sys
 from pathlib import Path
@@ -24,7 +25,8 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from export_web_data import (  # noqa: E402
-    SITES, SOURCE_GROUPS, _encode_wind, _slice_view, open_footprints, open_wind,
+    SITES, SOURCE_GROUPS, _encode_flux, _encode_wind, _slice_view, open_footprints,
+    open_wind,
 )
 
 REPO = Path(__file__).resolve().parents[1]
@@ -214,6 +216,7 @@ def verify(site: str) -> list[str]:
     if meta.get("flux") and not (out / meta["flux"]["file"]).exists():
         fails.append("meta advertises flux.png but it is missing")
 
+    fails += _verify_flux(meta, out, cfg)
     fails += _verify_flux_hires(meta, out)
     fails += _verify_wind(meta, out, cfg, fp_ds)
     return fails
@@ -319,6 +322,57 @@ def _verify_wind(meta: dict, out, cfg: dict, fp_ds) -> list[str]:
     return fails
 
 
+def _verify_flux(meta: dict, out, cfg: dict) -> list[str]:
+    """The coarse emissions map: re-encoded from source, and actually a map.
+
+    Same contract as the footprint and wind atlases -- the bytes are demanded
+    identical to a re-encode, so an encoder drift cannot ship quietly.
+
+    The second check is the one this gas needed. `logRange` is per species now,
+    and the failure it exists to prevent is **not** a crash: a window that sits
+    off the field encodes every cell to the same byte, and a single-valued
+    raster still draws. It draws as a flat rectangle, or as nothing at all, on
+    the one slide whose whole job is to show *where* something comes from. So a
+    flux map that carries fewer than a handful of distinct levels is a failure
+    here rather than a discovery on stage.
+    """
+    fl = meta.get("flux")
+    if not fl:
+        return []
+
+    spec = next((s for s in cfg["species"] if s["key"] == fl["species"]), None)
+    if spec is None or not spec.get("flux"):
+        return [f"meta.flux says species {fl['species']}, which has no flux in SITES"]
+
+    matches = sorted(glob.glob(spec["flux"]))
+    if not matches:
+        return [f"meta.flux names species {fl['species']} but {spec['flux']} is not on disk"]
+
+    fails = []
+    ds = xr.open_dataset(matches[0])
+    src = _slice_view(ds.flux.squeeze(), cfg["view"]).transpose("lat", "lon")
+    want = _encode_flux(src.values, (fl["logMin"], fl["logMax"]))[::-1, :]  # row 0 = north
+    got = np.asarray(Image.open(out / fl["file"]).convert("L"))
+
+    if got.shape != want.shape:
+        return [f"flux.png is {got.shape[1]}x{got.shape[0]}, "
+                f"but the view is {want.shape[1]}x{want.shape[0]}"]
+    if not np.array_equal(got, want):
+        fails.append(f"flux.png differs from a re-encode in {int((got != want).sum())} cells")
+
+    levels = int(np.unique(got).size)
+    drawn = float((got > 0).mean())
+    print(f"flux: {got.shape[1]} x {got.shape[0]} on 10^{fl['logMin']} .. 10^{fl['logMax']}, "
+          f"{levels} distinct levels, {drawn:.0%} of the view non-zero")
+    print(f"  bytes identical to a re-encode of {Path(matches[0]).name}")
+    if levels < 8:
+        fails.append(f"flux.png holds {levels} distinct levels -- the window "
+                     f"10^{fl['logMin']}..10^{fl['logMax']} does not fit this field")
+    if drawn == 0:
+        fails.append("flux.png is empty; every cell encodes as 'nothing here'")
+    return fails
+
+
 def _verify_flux_hires(meta: dict, out) -> list[str]:
     """The sources card's rasters: right shape, and an actual decomposition.
 
@@ -368,9 +422,18 @@ def _verify_flux_hires(meta: dict, out) -> list[str]:
     # export, not decoded pixels: the uint8 floor lifts every near-zero cell to
     # 10^logMin, so summing three decoded rasters over-counts the empty ocean by
     # more than the thing being measured.
-    named = sum(hi["layers"][k]["shareOfView"] for k in SOURCE_GROUPS if k in hi["layers"])
-    if not (99.0 <= named <= 100.01):
-        fails.append(f"source families cover {named:.1f}% of the view, expected ~99.7%")
+    #
+    # ⚠ Only where there is a decomposition to check. A deck whose gas has one
+    # source -- Gosan's HFC-23, and the CFC-11 population prior -- ships
+    # `layers` as `total` alone, and summing an empty selection gave 0.0%, which
+    # this then reported as families covering none of the view. That is the
+    # check misfiring on a deck that never made the claim, not a real failure:
+    # `verify_export.py --site GSN` failed on it for as long as that deck has
+    # shipped a single-layer card.
+    if any(k in hi["layers"] for k in SOURCE_GROUPS):
+        named = sum(hi["layers"][k]["shareOfView"] for k in SOURCE_GROUPS if k in hi["layers"])
+        if not (99.0 <= named <= 100.01):
+            fails.append(f"source families cover {named:.1f}% of the view, expected ~99.7%")
 
     # A family cannot exist where there is no methane at all. This is the check
     # that catches the two rasters being misaligned -- same shape, shifted
@@ -384,11 +447,22 @@ def _verify_flux_hires(meta: dict, out) -> list[str]:
                 fails.append(f"{key} has {orphan} cells where the total is empty -- grids misaligned?")
 
     if not fails:
-        print(f"hi-res sources: {grid['nLon']}x{grid['nLat']} at 0.1 deg, "
-              f"{len(seen)} sectors in {len(SOURCE_GROUPS)} families, {named:.1f}% of the view")
-        for key in groups:
-            print(f"  {key:8s} {hi['layers'][key]['shareOfView']:5.1f}% of the view  "
-                  f"({hi['layers'][key]['tgPerYear']:.3f} Tg/yr)")
+        # Report the grid's real step rather than the literal "0.1 deg" this
+        # line used to print: the CFC-11 prior is 1 km, and a verifier that
+        # states the wrong resolution is worse than one that states none.
+        step = (grid["lonMax"] - grid["lonMin"]) / grid["nLon"]
+        if groups:
+            print(f"hi-res sources: {grid['nLon']}x{grid['nLat']} at {step:.3f} deg, "
+                  f"{len(seen)} sectors in {len(SOURCE_GROUPS)} families, "
+                  f"{named:.1f}% of the view")
+            for key in groups:
+                print(f"  {key:8s} {hi['layers'][key]['shareOfView']:5.1f}% of the view  "
+                      f"({hi['layers'][key]['tgPerYear']:.3f} Tg/yr)")
+        else:
+            lyr = hi["layers"]["total"]
+            print(f"hi-res emissions: {grid['nLon']}x{grid['nLat']} at {step:.5f} deg "
+                  f"({grid['nLon'] * grid['nLat'] / 1e6:.1f} M cells), single layer "
+                  f"{lyr['label']!r}, {lyr['tgPerYear'] * 1e3:.3f} Gg/yr over the view")
     return fails
 
 

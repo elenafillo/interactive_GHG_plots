@@ -1,0 +1,132 @@
+{
+  "station": {
+    "id": "GSN-CFC11",
+    "name": "Gosan, Jeju Island",
+    "lat": 33.29236,
+    "lon": 126.161762,
+    "inletMagl": null,
+    "blurb": "Gosan on Jeju Island, watching CFC-11 over June and July 2016."
+  },
+  "species": [
+    {
+      "key": "cfc-11",
+      "label": "CFC-11",
+      "units": "ppt",
+      "hasObs": true,
+      "hasModel": true,
+      "nObs": 365,
+      "obsMin": 229.578,
+      "obsMax": 296.638
+    }
+  ],
+  "defaultSpecies": "cfc-11",
+  "view": {
+    "latMin": 22.0,
+    "latMax": 46.0,
+    "lonMin": 105.0,
+    "lonMax": 145.0
+  },
+  "footprint": {
+    "atlas": {
+      "file": "fp_atlas.png",
+      "cols": 26,
+      "rows": 26,
+      "tileW": 114,
+      "tileH": 102
+    },
+    "grid": {
+      "nx": 114,
+      "ny": 102,
+      "lonMin": 105.02800369262695,
+      "lonMax": 145.1559944152832,
+      "latMin": 22.077999114990234,
+      "latMax": 45.94599914550781
+    },
+    "logMin": -4.038328680240055,
+    "logMax": 0.5813210815735071,
+    "logDisplayMax": -0.8909742489456828,
+    "nTime": 672,
+    "sizeMB": 3.33
+  },
+  "flux": {
+    "logMin": -18.0,
+    "logMax": -10.0,
+    "file": "flux.png",
+    "species": "cfc-11"
+  },
+  "fluxHires": {
+    "logMin": -18.0,
+    "logMax": -10.0,
+    "species": "cfc-11",
+    "year": 2016,
+    "source": "WorldPop R2025A constrained, UN-adjusted, 1 km, 2016 (CHN, TWN, JPN, KOR, PRK), scaled to the view's own emission total",
+    "ungroupedSectors": null,
+    "publishedTotalsRatio": null,
+    "grid": {
+      "latMin": 22.0,
+      "latMax": 46.00000000000001,
+      "lonMin": 105.0,
+      "lonMax": 145.0,
+      "nLat": 2880,
+      "nLon": 4800
+    },
+    "totalTgPerYear": 0.015055,
+    "layers": {
+      "total": {
+        "file": "flux_hi.png",
+        "label": "Where people live",
+        "sectors": null,
+        "tgPerYear": 0.015055,
+        "shareOfView": 100.0
+      }
+    }
+  },
+  "factories": null,
+  "wind": {
+    "atlas": {
+      "u": "wind_u.png",
+      "v": "wind_v.png",
+      "cols": 15,
+      "rows": 15,
+      "tileW": 85,
+      "tileH": 102
+    },
+    "layout": "two-l8",
+    "grid": {
+      "nx": 85,
+      "ny": 102,
+      "lonMin": 105.02800369262695,
+      "lonMax": 134.94800186157227,
+      "latMin": 22.077999114990234,
+      "latMax": 45.94599914550781
+    },
+    "uvMax": 37.0,
+    "nTime": 224,
+    "frameStride": 3,
+    "framesCovered": 670,
+    "levelIndex": 2,
+    "levelLabel": "77 m",
+    "source": "data/met/GSN_wind_77m_201606-201607.nc",
+    "sourceVars": "eastward_wind, northward_wind",
+    "sizeMB": 1.65,
+    "stationCorr": null
+  },
+  "series": {
+    "species": [
+      {
+        "key": "cfc-11",
+        "label": "CFC-11",
+        "units": "ppt",
+        "hasObs": true,
+        "hasModel": true,
+        "nObs": 365,
+        "obsMin": 229.578,
+        "obsMax": 296.638
+      }
+    ],
+    "defaultSpecies": "cfc-11",
+    "hasLandFrac": true,
+    "nTime": 672
+  },
+  "timeStepHours": 2
+}

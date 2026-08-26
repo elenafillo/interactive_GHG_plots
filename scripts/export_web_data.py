@@ -45,11 +45,39 @@ from PIL import Image
 REPO = Path(__file__).resolve().parents[1]
 
 # Emissions colour scale, matching the notebook's flux plot.
+#
+# These are CH4's, and they stay the default so Ridge Hill's export is byte for
+# byte what it was. A site whose gas lives somewhere else on the scale overrides
+# them in its `flux_hires` spec -- see `logRange` there. The window is wide on
+# purpose: it decides what the PNG can *encode*, and re-cutting it costs a full
+# re-export, while which part of it the eye gets is `SOURCE_DISPLAY` in
+# palette.js and is tunable live in the browser.
 FLUX_LOG_MIN, FLUX_LOG_MAX = -11.5, -7.0
 
-# Molar mass of CH4. The raw 0.1 deg EDGAR files are kg/m2/s; everything else in
-# this pipeline is mol/m2/s, which is what the ACRG-regridded files carry.
-M_CH4_KG_PER_MOL = 0.016043
+# The raw 0.1 deg EDGAR files are kg/m2/s; everything else in this pipeline is
+# mol/m2/s, which is what the ACRG-regridded files carry. So every raw file has
+# to be divided by the molar mass of *its own* gas, and getting that wrong is
+# silent -- the map still draws, just wrong by the ratio of the two masses.
+M_KG_PER_MOL = {
+    "ch4": 0.016043,
+    "hfc-23": 0.070014,   # CHF3
+    "cfc-11": 0.137368,   # CCl3F
+}
+
+# mole fraction -> the unit the observations are reported in.
+#
+# `forward_model` returns footprint x flux, which is mol/mol, and it has to land
+# on the same axis as the measurements it is compared against. Methane is
+# reported in parts per *billion* and the halocarbons in parts per *trillion* --
+# a factor of 1000, and the most dangerous kind of wrong, because a modelled
+# series 1000x too small still draws: it is a flat line along the bottom of the
+# chart, which reads as "the inventory says there is nothing here" rather than
+# as a bug. The baseline is derived from obs - modelled, so it would be wrong
+# too, and the smell bar sits on the baseline.
+#
+# Keyed off `spec["units"]`, the same string the chart labels its axis with, so
+# a species cannot be labelled ppt and modelled as ppb.
+PPX_PER_MOL_MOL = {"ppb": 1e9, "ppt": 1e12}
 
 # The source families Card 3 steps through, as EDGAR v7 sector codes.
 #
@@ -168,6 +196,31 @@ SITES = {
         "view": {"lat": (22.0, 46.0), "lon": (105.0, 145.0)},
         "time_step": 2,
         "mass_tol": 0.01,
+        # EDGAR v8.0, 2016 -- the same year as the footprints, so the deck never
+        # has to explain a mismatch between where the gas came from and when the
+        # air was sampled.
+        #
+        # `sectors: None` is the whole point: EDGAR publishes HFC-23 under one
+        # code (PRU_SOL, "solvents and products use"), and its grid is identical
+        # to TOTALS, so there is no breakdown to draw and one raster ships. The
+        # sources act gets one purple beat rather than Ridge Hill's three.
+        #
+        # `logRange` is *not* CH4's. This gas sits four orders of magnitude
+        # lower -- the field runs 10^-21.4 to 10^-10.1 mol/m2/s inside this view
+        # -- so on the -11.5..-7.0 window every cell would clip to the darkest
+        # step and the map would encode as solid black. -18..-10 covers the
+        # field; which slice of it the eye actually gets is SOURCE_DISPLAY in
+        # palette.js, and that one is tunable live with `T`.
+        "flux_hires": {
+            "dir": "data/fluxes/hfc-23/EDGAR_v8.0",
+            "totals": "yearly/v8.0_FT2022_GHG_HFC-23_2016_TOTALS_flx.nc",
+            "sectors": None,
+            "species": "hfc-23",
+            "logRange": (-18.0, -10.0),
+            "label": "Where it is made",
+            "year": 2016,
+            "source": "EDGAR v8.0_FT2022, 0.1 x 0.1 deg, published TOTALS",
+        },
         # Reported HFC-23 plant locations. Domain-wide rather than period-
         # specific, so both Gosan instances point at the same file.
         "factories": {
@@ -176,6 +229,119 @@ SITES = {
         },
         "out": "web/data-gsn",
         "blurb": "Gosan on Jeju Island, in the outflow from eastern China.",
+    },
+    "GSN-CFC11": {
+        # June and July 2016 -- the same island and the same footprints as
+        # "GSN", but CFC-11 rather than HFC-23, and two months rather than
+        # three. August is dropped because the met store stops at 31 July, and
+        # a third of the record with no wind would be a third of the deck with
+        # a frozen wind field.
+        #
+        # ⚠ Brace globs do not work: Python's `glob` has no brace expansion, so
+        # `2016{06,07}.nc` silently matches nothing. The character class does.
+        "fp": "data/fps/GSN-10magl_EASTASIA_20160[67].nc",
+        "species": [
+            {
+                "key": "cfc-11",
+                "label": "CFC-11",
+                "units": "ppt",
+                "obs": "data/obs/*_cfc-11_*",
+                # ⚠ **A prior, not an inventory, and the deck must never call it
+                # one.** There is no CFC-11 inventory for this region -- that
+                # absence is the deck's whole argument. This file is 40.0 Gg/yr
+                # spread over East Asia *by 2015 population* (SEDAC GPWv4, doi
+                # 10.7927/H4JQ0XZW), which is the assumption an inversion starts
+                # from when it knows nothing: "it probably comes from wherever
+                # the people are". Verified to integrate to 40.07 Gg/yr against
+                # its own title, of which 15.04 (38%) falls inside this view.
+                #
+                # It sits on **exactly the NAME footprint grid** -- 340 x 391,
+                # coordinates bit-identical to the footprint files, checked --
+                # so nothing is regridded and the coarse `flux` key is a
+                # drop-in. That is the opposite of the HFC-23 case, which had to
+                # take `flux_hires` to avoid a regrid.
+                #
+                # The other file in that directory, `cfc-11_EASTASIA_2000.nc`,
+                # is the flat prior: two distinct values in the entire field,
+                # "20 Gg over East Asia, 20 Gg over everywhere else". A
+                # two-tone rectangle, and a strong slide about how little was
+                # known -- but not this key, which the map draws as geography.
+                "flux": "data/fluxes/cfc-11/cfc-11-population_EASTASIA_2002.nc",
+                # Not methane's -11.5..-7.0: inside this view the field runs
+                # 10^-17.58 to 10^-10.72, which is below CH4's floor everywhere,
+                # so on that window every cell pins to the darkest step and the
+                # map encodes as a solid rectangle. -18..-10 clips nothing at
+                # either end, and is the same window `data-gsn`'s HFC-23 raster
+                # uses -- so a byte means the same thing across both Gosan decks.
+                "flux_log_range": (-18.0, -10.0),
+            },
+        ],
+        "view": {"lat": (22.0, 46.0), "lon": (105.0, 145.0)},
+        "time_step": 2,
+        "mass_tol": 0.01,
+        # The 1 km population prior, drawn as its own layer rather than
+        # replacing the coarse one. Both ship: `flux` above stays on the
+        # footprint grid because `forward_model` multiplies it by the footprint
+        # cell for cell, and a finer emissions map cannot make the transport any
+        # finer. This raster is never multiplied by anything -- it is only ever
+        # looked at -- which is exactly the case where the extra detail is real.
+        #
+        # `path` rather than `dir` is what routes it to
+        # _export_flux_hires_raster: the file is already the map, in mol/m2/s,
+        # on WorldPop's native 30 arc-second grid with no resampling anywhere in
+        # its history.
+        #
+        # logRange is the site's own -18..-10, shared with flux.png so a byte
+        # means the same emission on both. At 1 km that clips 164 cells of
+        # 3.78 M -- 0.38% of the emission, all of it city centres already
+        # painted at full brightness. Widening to -9 would clear it but would
+        # force flux.png to be re-cut on the same window.
+        #
+        # ⚠ Coverage is CHN, TWN, JPN, KOR and PRK. Vietnam, Laos, Myanmar,
+        # Mongolia and the Russian Far East clip the view box and are blank --
+        # do not write a caption that reads the map as a complete accounting of
+        # where people live.
+        "flux_hires": {
+            "path": "data/fluxes/cfc-11/cfc-11-population_EASTASIA_2016_1km.nc",
+            "species": "cfc-11",
+            "logRange": (-18.0, -10.0),
+            "label": "Where people live",
+            "year": 2016,
+            "source": ("WorldPop R2025A constrained, UN-adjusted, 1 km, 2016 "
+                       "(CHN, TWN, JPN, KOR, PRK), scaled to the view's own "
+                       "emission total"),
+        },
+        # Deliberately no `factories`: factory_locations_EASTASIA.csv is an
+        # HFC-23 plant list and captioning it as CFC-11 would be a lie the map
+        # cannot correct.
+        #
+        # Wind for the arrows and drifting parcels, sliced from
+        # data/met/EASTASIA_GSN_Met_2016/EASTASIA_GSN_Met_2016.zarr by
+        # scripts/slice_met.py. Model level 2, whose *true* height is 76.7 m:
+        # that store was snapped rather than de-staggered, so its `level_height`
+        # of 100 m describes the mass fields and overstates u/v. The level was
+        # chosen against the footprint's own transport, Gosan's anemometer
+        # record being a column of exact zeros.
+        #
+        # No lonMax. The store stops at lon 134.77, twenty-nine columns short of
+        # the view's eastern edge, so the eastern crop is already made by the
+        # data and there is nothing left for a config to trim.
+        #
+        # The slice is pre-aligned to fp_ds.time[::2] -- 224 steps on a uniform
+        # three-frame stride, covering frames 0..669 of 672. That binds it to
+        # `time_step: 2`; change the frame step and the slice must be re-cut, or
+        # export_wind() will reject it.
+        #
+        # uvMax 37 covers the true component maximum inside the view
+        # (36.52 m/s) with no clipping, at a 0.291 m/s quantisation step. It is
+        # deliberately not Ridge Hill's 40: three m/s of unused headroom is
+        # quantisation thrown away.
+        "wind": {
+            "path": "data/met/GSN_wind_77m_201606-201607.nc",
+            "uvMax": 37.0,
+        },
+        "out": "web/data-gsn-cfc11",
+        "blurb": "Gosan on Jeju Island, watching CFC-11 over June and July 2016.",
     },
     "GSN-2021": {
         # February to May 2021, the post-abatement window: after China's claimed
@@ -505,38 +671,83 @@ def export_factories(spec: dict | None, view: dict, species: list, fp_meta: dict
     }
 
 
-def _encode_flux(vals: np.ndarray) -> np.ndarray:
-    """Emissions (mol/m2/s) -> uint8 on the shared log scale. 0 means nothing here.
+def _encode_flux(vals: np.ndarray, log_range: tuple[float, float] | None = None) -> np.ndarray:
+    """Emissions (mol/m2/s) -> uint8 on a log scale. 0 means nothing here.
 
     Extracted so `export_flux` and `export_flux_hires` cannot drift apart: the
     hi-res source maps are only comparable to flux.png, and to each other, while
     all of them share one scale.
+
+    `log_range` is per *site*, not per raster, for exactly that reason -- every
+    caller within one export passes the same pair, and the default is CH4's. A
+    gas four orders of magnitude weaker needs its own window or it encodes to
+    solid black, but two rasters in one export must never disagree about what a
+    byte means.
     """
+    lo, hi = log_range or (FLUX_LOG_MIN, FLUX_LOG_MAX)
     with np.errstate(divide="ignore", invalid="ignore"):
         lg = np.log10(np.where(vals > 0, vals, np.nan))
-    u = np.clip(np.round(1 + 254 * (lg - FLUX_LOG_MIN) / (FLUX_LOG_MAX - FLUX_LOG_MIN)), 1, 255)
+    u = np.clip(np.round(1 + 254 * (lg - lo) / (hi - lo)), 1, 255)
     return np.where(np.isfinite(u), u, 0).astype(np.uint8)
 
 
-def export_flux(flux_ds, view, out_dir):
-    """Emissions map on the same grid, same encoding idea as the footprint."""
+def export_flux(flux_ds, view, out_dir, log_range=None):
+    """Emissions map on the same grid, same encoding idea as the footprint.
+
+    `log_range` is the species' own encoding window, from `flux_log_range` on
+    the species spec, and defaults to methane's. It is the same knob
+    `flux_hires` already has as `logRange` and it exists for the same reason: a
+    gas whose field sits orders of magnitude below CH4's window encodes to one
+    flat byte on it, and a flat raster is a blank slide.
+
+    ⚠ Unlike the hi-res rasters, this one has **no separate display window in
+    the browser by default** -- `FLUX_LUT` spreads its ramp over the whole
+    encoded range -- so for methane this window is what the eye gets as well as
+    what the PNG stores. A species that wants the two separated says so in
+    `SOURCE_DISPLAY_BY_SPECIES` in palette.js, which is tunable live with `T`.
+    """
     fl = _slice_view(flux_ds.flux.squeeze(), view).transpose("lat", "lon")
-    u = _encode_flux(fl.values)
+    lo, hi = tuple(log_range) if log_range else (FLUX_LOG_MIN, FLUX_LOG_MAX)
+    u = _encode_flux(fl.values, (lo, hi))
     Image.fromarray(u[::-1, :], mode="L").save(out_dir / "flux.png", optimize=True)
+    # The clipped share is the number that says whether the window fits: cells
+    # pinned at 1 or 255 have lost their value, and on a map of "where it comes
+    # from" that is the difference between a city and its suburbs.
+    vals = fl.values
+    pos = vals[vals > 0]
+    if pos.size:
+        lg = np.log10(pos)
+        under = int((lg < lo).sum())
+        over = int((lg > hi).sum())
+        print(f"  flux window 10^{lo} .. 10^{hi}: field runs "
+              f"10^{lg.min():.2f} .. 10^{lg.max():.2f}, "
+              f"{under} cells under, {over} over ({100 * (under + over) / pos.size:.2f}%)")
     print(f"  wrote flux.png  {(out_dir / 'flux.png').stat().st_size / 1e3:.0f} KB")
-    return {"logMin": FLUX_LOG_MIN, "logMax": FLUX_LOG_MAX, "file": "flux.png"}
+    return {"logMin": lo, "logMax": hi, "file": "flux.png"}
 
 
-def _read_edgar_01(path: Path, view: dict):
+def _read_edgar_01(path: Path, view: dict, species: str = "ch4"):
     """One raw 0.1 deg EDGAR file, cropped to `view`, as (mol/m2/s, lat, lon).
 
     Two conversions the ACRG-regridded files have already had done to them and
     these have not: kg/m2/s -> mol/m2/s, and a 0..360 longitude axis -> -180..180.
     Getting either wrong is silent -- the map still draws, just wrong by a factor
     of 62 or shifted half a world -- so both happen in one place.
+
+    Two EDGAR generations land here and they disagree about both. v7 names its
+    variable `emi_ch4` and runs longitude 0..360; v8 names it `fluxes` and is
+    already -180..180. So the variable is taken as "the one data variable in the
+    file" rather than by name -- these files have exactly one, and a name test
+    would have to grow a case per gas -- and the wrap below is left to no-op on
+    an axis that is already signed.
     """
     ds = xr.open_dataset(path)
-    vals = ds.emi_ch4.values.astype("float64") / M_CH4_KG_PER_MOL
+    names = list(ds.data_vars)
+    if len(names) != 1:
+        raise SystemExit(f"{path.name}: expected one data variable, found {names}")
+    if species not in M_KG_PER_MOL:
+        raise SystemExit(f"no molar mass for {species!r}; add it to M_KG_PER_MOL")
+    vals = ds[names[0]].values.astype("float64").squeeze() / M_KG_PER_MOL[species]
     lat = ds.lat.values.astype("float64")
     lon = ds.lon.values.astype("float64")
     ds.close()
@@ -557,6 +768,97 @@ def _cell_area(lat: np.ndarray, dlat: float, dlon: float) -> np.ndarray:
     return r ** 2 * np.deg2rad(dlon) * (np.sin(np.deg2rad(lat) + h) - np.sin(np.deg2rad(lat) - h))
 
 
+def _export_flux_hires_raster(spec: dict, view: dict, out_dir) -> dict | None:
+    """A hi-res emissions map that is already a finished field on its own grid.
+
+    The EDGAR path below *builds* its map -- reads sector files, converts
+    kg/m2/s to mol/m2/s, sums the families. This one has nothing to build: the
+    file is already the map and already in mol/m2/s, so the only steps are crop
+    and encode. That is what the CFC-11 population prior is -- WorldPop's own
+    30 arc-second cells, never resampled, so between the published head-count
+    and the screen there is a single scalar multiply and no interpolation.
+
+    Taken by `flux_hires` carrying a `path` instead of a `dir`, which is also
+    what makes the two paths tell themselves apart.
+
+    ⚠ It shares `_encode_flux` and the site's window with `flux.png` on purpose.
+    The two rasters are *the same field at two resolutions*, so a byte has to
+    mean the same emission on both -- otherwise `G`, which flips between them,
+    would be comparing two different scales and calling it a resolution.
+    """
+    path = REPO / spec["path"]
+    if not path.exists():
+        print(f"  ! no hi-res emissions at {path}, skipping")
+        return None
+
+    species = spec.get("species", "ch4")
+    if species not in M_KG_PER_MOL:
+        raise SystemExit(f"no molar mass for {species!r}; add it to M_KG_PER_MOL")
+    log_range = tuple(spec.get("logRange", (FLUX_LOG_MIN, FLUX_LOG_MAX)))
+
+    ds = xr.open_dataset(path)
+    da = _slice_view(ds[spec.get("var", "flux")].squeeze(), view).transpose("lat", "lon")
+    vals = np.asarray(da.values, dtype="float64")
+    lat = np.asarray(da.lat.values, dtype="float64")
+    lon = np.asarray(da.lon.values, dtype="float64")
+    ds.close()
+
+    ny, nx = vals.shape
+    dlat = float(np.diff(lat).mean())
+    dlon = float(np.diff(lon).mean())
+    print(f"  hi-res emissions grid {nx} lon x {ny} lat  "
+          f"({dlon:.5f} x {dlat:.5f} deg, {nx * ny / 1e6:.1f} M cells)")
+
+    area = _cell_area(lat, dlat, dlon)[:, None] * np.ones(nx)[None, :]
+    to_tg = area * M_KG_PER_MOL[species] * 365.0 * 24 * 3600 / 1e9
+    total_tg = float((vals * to_tg).sum())
+
+    u = _encode_flux(vals, log_range)
+    Image.fromarray(u[::-1, :], mode="L").save(out_dir / "flux_hi.png", optimize=True)
+
+    # Same reporting as export_flux: a window that clips is the difference
+    # between a city and its suburbs, and at 1 km it is the city centres that
+    # go first, so the number has to be printed on every re-export.
+    lo, hi = log_range
+    pos = vals[vals > 0]
+    if pos.size:
+        lg = np.log10(pos)
+        under, over = int((lg < lo).sum()), int((lg > hi).sum())
+        clipped = 100 * float(pos[lg > hi].sum()) / float(pos.sum()) if over else 0.0
+        print(f"  flux_hi window 10^{lo} .. 10^{hi}: field runs "
+              f"10^{lg.min():.2f} .. 10^{lg.max():.2f}, {under} cells under, "
+              f"{over} over ({clipped:.3f}% of the emission clipped)")
+    mb = (out_dir / "flux_hi.png").stat().st_size / 1e6
+    print(f"  wrote flux_hi.png  {mb:.2f} MB   "
+          f"{total_tg * 1e3:.3f} Gg/yr over the view")
+
+    return {
+        "logMin": lo,
+        "logMax": hi,
+        "species": species,
+        "year": spec.get("year"),
+        "source": spec.get("source", str(path.name)),
+        # No sector decomposition exists for this kind of map, and "none were
+        # left over" would be a different claim from "the question does not
+        # apply". Same convention the single-sector EDGAR path uses.
+        "ungroupedSectors": None,
+        "publishedTotalsRatio": None,
+        "grid": {"latMin": float(lat[0] - dlat / 2), "latMax": float(lat[-1] + dlat / 2),
+                 "lonMin": float(lon[0] - dlon / 2), "lonMax": float(lon[-1] + dlon / 2),
+                 "nLat": ny, "nLon": nx},
+        "totalTgPerYear": round(total_tg, 6),
+        "layers": {
+            "total": {
+                "file": "flux_hi.png",
+                "label": spec.get("label", "All of it"),
+                "sectors": None,
+                "tgPerYear": round(total_tg, 6),
+                "shareOfView": 100.0,
+            }
+        },
+    }
+
+
 def export_flux_hires(spec: dict | None, view: dict, out_dir) -> dict | None:
     """Card 3's emissions maps: the total, then three source groups, at 0.1 deg.
 
@@ -572,23 +874,43 @@ def export_flux_hires(spec: dict | None, view: dict, out_dir) -> dict | None:
     can be read against each other. Per-group scaling would make the smallest
     source look as strong as the largest, which is the one thing this card must
     not do.
+
+    ---
+
+    **A gas with one source takes the short path.** `sectors: None` in the spec
+    means there is no breakdown to draw: the published TOTALS grid *is* the whole
+    story, it ships as the single `total` raster, and no family files are written.
+    That is not a degraded version of the card -- for HFC-23 the one sector file
+    EDGAR publishes (`PRU_SOL`) is bit-for-bit identical to TOTALS, so summing
+    parts would produce the same array by a longer route. It also sidesteps the
+    reason the CH4 path sums rather than reads: the zeroed cells over English
+    cities are an artefact of *combining* sectors, and a single-sector gas has no
+    such disagreement to reconcile.
     """
     if not spec:
         return None
+    # A spec that names one finished file has nothing to sum -- see
+    # _export_flux_hires_raster, which is where the CFC-11 1 km prior goes.
+    if spec.get("path"):
+        return _export_flux_hires_raster(spec, view, out_dir)
     root = REPO / spec["dir"]
     totals_path = root / spec["totals"]
     if not totals_path.exists():
         print(f"  ! no hi-res emissions at {totals_path}, skipping")
         return None
 
-    published, lat, lon = _read_edgar_01(totals_path, view)
+    species = spec.get("species", "ch4")
+    log_range = tuple(spec.get("logRange", (FLUX_LOG_MIN, FLUX_LOG_MAX)))
+    single = not spec.get("sectors")
+
+    published, lat, lon = _read_edgar_01(totals_path, view, species)
     ny, nx = published.shape
     dlat = float(np.diff(lat).mean())
     dlon = float(np.diff(lon).mean())
     print(f"  hi-res emissions grid {nx} lon x {ny} lat  ({dlon:.2f} x {dlat:.2f} deg)")
 
     area = _cell_area(lat, dlat, dlon)[:, None] * np.ones(nx)[None, :]
-    to_tg = area * M_CH4_KG_PER_MOL * 365.0 * 24 * 3600 / 1e9
+    to_tg = area * M_KG_PER_MOL[species] * 365.0 * 24 * 3600 / 1e9
 
     missing = []
 
@@ -599,41 +921,50 @@ def export_flux_hires(spec: dict | None, view: dict, out_dir) -> dict | None:
             if not p.exists():
                 missing.append(code)
                 continue
-            acc += _read_edgar_01(p, view)[0]
+            acc += _read_edgar_01(p, view, species)[0]
         return acc
 
-    layers = {}
-    for key, group in SOURCE_GROUPS.items():
-        layers[key] = {"label": group["label"], "vals": read_sectors(group["sectors"]),
-                       "file": f"src_{key}.png"}
-    ungrouped = read_sectors(UNGROUPED_SECTORS)
+    if single:
+        total = published
+        layers = {"total": {"label": spec.get("label", "All of it"),
+                            "vals": total, "file": "flux_hi.png"}}
+        total_tg = float((total * to_tg).sum())
+        ratio = 1.0
+        print(f"  single source, published TOTALS used directly "
+              f"({int((total > 0).sum())} cells carry emissions)")
+    else:
+        layers = {}
+        for key, group in SOURCE_GROUPS.items():
+            layers[key] = {"label": group["label"], "vals": read_sectors(group["sectors"]),
+                           "file": f"src_{key}.png"}
+        ungrouped = read_sectors(UNGROUPED_SECTORS)
 
-    # The total is *built* from the sectors rather than read from the published
-    # TOTALS grid, which EDGAR generates separately. Those two disagree, and not
-    # only in the last decimal: the published grid has a handful of cells that
-    # are flatly zero while every sector file has emissions there, four of them
-    # over Leeds, Sheffield, Birmingham and Lincoln. At 0.1 deg on the card's
-    # framing each one is a visible hole punched in an English city. Summing the
-    # parts removes them, and makes the card's claim true by construction --
-    # what the reader is shown as "all of it" is exactly the three families plus
-    # the transport slack.
-    total = sum(l["vals"] for l in layers.values()) + ungrouped
-    layers = {"total": {"label": "All methane", "vals": total, "file": "flux_hi.png"}, **layers}
-    total_tg = float((total * to_tg).sum())
+        # The total is *built* from the sectors rather than read from the published
+        # TOTALS grid, which EDGAR generates separately. Those two disagree, and not
+        # only in the last decimal: the published grid has a handful of cells that
+        # are flatly zero while every sector file has emissions there, four of them
+        # over Leeds, Sheffield, Birmingham and Lincoln. At 0.1 deg on the card's
+        # framing each one is a visible hole punched in an English city. Summing the
+        # parts removes them, and makes the card's claim true by construction --
+        # what the reader is shown as "all of it" is exactly the three families plus
+        # the transport slack.
+        total = sum(l["vals"] for l in layers.values()) + ungrouped
+        layers = {"total": {"label": "All methane", "vals": total, "file": "flux_hi.png"}, **layers}
+        total_tg = float((total * to_tg).sum())
 
-    if missing:
-        print(f"  ! missing sector files, treated as zero: {', '.join(missing)}")
+        if missing:
+            print(f"  ! missing sector files, treated as zero: {', '.join(missing)}")
 
-    # Report the disagreement rather than hiding it: a large gap would mean a
-    # sector file had gone missing, which is worth seeing on every re-export.
-    holes = int(((total > 0) & (published <= 0)).sum())
-    ratio = float((published * to_tg).sum() / total_tg) if total_tg else float("nan")
-    print(f"  summed sectors vs published TOTALS: {ratio:.4f}  "
-          f"({holes} cells the published grid leaves empty)")
+        # Report the disagreement rather than hiding it: a large gap would mean a
+        # sector file had gone missing, which is worth seeing on every re-export.
+        holes = int(((total > 0) & (published <= 0)).sum())
+        ratio = float((published * to_tg).sum() / total_tg) if total_tg else float("nan")
+        print(f"  summed sectors vs published TOTALS: {ratio:.4f}  "
+              f"({holes} cells the published grid leaves empty)")
 
     out = {}
     for key, layer in layers.items():
-        u = _encode_flux(layer["vals"])
+        u = _encode_flux(layer["vals"], log_range)
         Image.fromarray(u[::-1, :], mode="L").save(out_dir / layer["file"], optimize=True)
         kb = (out_dir / layer["file"]).stat().st_size / 1e3
         tg = float((layer["vals"] * to_tg).sum())
@@ -650,16 +981,22 @@ def export_flux_hires(spec: dict | None, view: dict, out_dir) -> dict | None:
         print(f"  wrote {layer['file']:<18} {kb:5.0f} KB   "
               f"{tg:6.3f} Tg/yr  {share:5.1f}% of the view")
 
-    named = sum(out[k]["tgPerYear"] for k in SOURCE_GROUPS)
-    print(f"  three families cover {100 * named / total_tg:.1f}% of the view total; "
-          f"the rest is transport, uncoloured")
+    if not single:
+        named = sum(out[k]["tgPerYear"] for k in SOURCE_GROUPS)
+        print(f"  three families cover {100 * named / total_tg:.1f}% of the view total; "
+              f"the rest is transport, uncoloured")
 
     return {
-        "logMin": FLUX_LOG_MIN,
-        "logMax": FLUX_LOG_MAX,
+        "logMin": log_range[0],
+        "logMax": log_range[1],
+        "species": species,
         "year": spec.get("year"),
-        "source": "EDGAR v7.0_FT2021, 0.1 x 0.1 deg, summed from sector grids",
-        "ungroupedSectors": UNGROUPED_SECTORS,
+        "source": spec.get("source", "EDGAR v7.0_FT2021, 0.1 x 0.1 deg, summed from sector grids"),
+        # A single-source gas has no unassigned remainder and nothing to
+        # reconcile: null rather than an empty list, so a consumer that asks
+        # "which sectors went uncoloured" gets "the question does not apply"
+        # rather than "none did", which are different answers.
+        "ungroupedSectors": None if single else UNGROUPED_SECTORS,
         "publishedTotalsRatio": round(ratio, 4),
         "grid": {"latMin": float(lat[0] - dlat / 2), "latMax": float(lat[-1] + dlat / 2),
                  "lonMin": float(lon[0] - dlon / 2), "lonMax": float(lon[-1] + dlon / 2),
@@ -698,6 +1035,34 @@ def wind_from_direction(u, v):
 def angular_error(a, b):
     """Absolute difference between two bearings, taking the short way round."""
     return np.abs(((a - b + 180.0) % 360.0) - 180.0)
+
+
+def anemometer_is_real(fp_ds) -> bool:
+    """Whether the footprint file's station wind is a measurement or a placeholder.
+
+    Present-but-constant is the case this exists for. Gosan's `wind_speed` and
+    `wind_direction` are finite for all 1344 hours of June-July 2016 and every
+    single value is exactly 0.0 -- the producer had nothing to put there and
+    wrote zeros rather than dropping the variables.
+
+    Correlating against that is not weak evidence, it is none, and it is not
+    harmless: `_pearson` against a zero-variance column returns NaN, `json.dumps`
+    writes NaN as a bare token, and `JSON.parse` rejects the whole of meta.json.
+    A missing anemometer would silently take the page down with it.
+
+    Shared with scripts/slice_met.py, which makes the same judgement when it
+    chooses a model level, so the two cannot disagree about whether this site has
+    a usable wind record.
+    """
+    for name in ("wind_speed", "wind_direction"):
+        if name not in fp_ds.variables:
+            return False
+    sp = np.asarray(fp_ds.wind_speed.values, "float64").ravel()
+    di = np.asarray(fp_ds.wind_direction.values, "float64").ravel()
+    ok = np.isfinite(sp) & np.isfinite(di)
+    if ok.sum() < 24:
+        return False
+    return float(np.std(sp[ok])) > 0.0 and float(np.std(di[ok])) > 0.0
 
 
 def open_wind(path: str, inlet_magl: float | None = None) -> xr.Dataset:
@@ -855,8 +1220,13 @@ def export_wind(spec: dict | None, view: dict, out_dir, fp_ds, time_step: int,
         print(f"  wrote {f}  {mb:.2f} MB")
 
     # --- does it agree with the station's own anemometer? -------------------
+    # `stationCorr` stays null where there is no anemometer to compare against,
+    # which is already the supported "not measured" value. See
+    # `anemometer_is_real` for why a placeholder record must not reach _pearson.
     corr = None
-    if "wind_speed" in fp_ds.variables and "wind_direction" in fp_ds.variables:
+    if not anemometer_is_real(fp_ds):
+        print("  no usable station wind in the footprint file; stationCorr stays null")
+    else:
         lat = np.asarray(sub.lat.values, "float64")
         lon = np.asarray(sub.lon.values, "float64")
         iy = int(np.argmin(np.abs(lat - station["lat"])))
@@ -914,20 +1284,25 @@ def export_wind(spec: dict | None, view: dict, out_dir, fp_ds, time_step: int,
     }
 
 
-def forward_model(fp_ds, flux_ds, time_step):
-    """Modelled CH4 enhancement: sum(footprint * flux) over the full domain.
+def forward_model(fp_ds, flux_ds, time_step, units):
+    """Modelled enhancement: sum(footprint * flux) over the full domain.
 
     This is the actual forward model an inversion inverts -- the sensitivity
     footprint dotted with an emissions map gives the mole-fraction enhancement
     the station should have seen above baseline. Computed over the *whole*
     domain (not the cropped view) so it stays physically correct.
+
+    `units` is the species' own -- ppb for methane, ppt for the halocarbons --
+    and is required rather than defaulted, because the one thing this function
+    must never do is guess the scale. See `PPX_PER_MOL_MOL`.
     """
+    scale = PPX_PER_MOL_MOL[units]
     q = flux_ds.flux.squeeze().transpose("lat", "lon").values.astype("float64")
     nt_full = fp_ds.sizes["time"]
     out = []
     for i in range(0, nt_full, 48):
         block = fp_ds.fp.isel(time=slice(i, i + 48)).transpose("time", "lat", "lon").values
-        out.append((block.astype("float64") * q[None]).sum(axis=(1, 2)) * 1e9)
+        out.append((block.astype("float64") * q[None]).sum(axis=(1, 2)) * scale)
     return np.concatenate(out)[::time_step]
 
 
@@ -1033,7 +1408,7 @@ def export_series(fp_ds, species_data, time_step, out_dir, cfg):
         baseline = None
 
         if flux_ds is not None:
-            modelled = forward_model(fp_ds, flux_ds, time_step)[:n]
+            modelled = forward_model(fp_ds, flux_ds, time_step, spec["units"])[:n]
             if obs_v is not None:
                 baseline = float(np.nanpercentile(obs_v - modelled, 10))
                 print(f"    baseline {baseline:.1f} {spec['units']}, "
@@ -1232,7 +1607,7 @@ def export_site(site: str, time_step: int | None = None, simplify: float = 0.02)
         _, flux_ds = species_data[spec["key"]]
         if flux_ds is not None:
             print(f"flux ({spec['label']}) ...")
-            flux_meta = export_flux(flux_ds, cfg["view"], out)
+            flux_meta = export_flux(flux_ds, cfg["view"], out, spec.get("flux_log_range"))
             flux_meta["species"] = spec["key"]
             break
 

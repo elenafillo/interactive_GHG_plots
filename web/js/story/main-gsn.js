@@ -1,11 +1,11 @@
 /**
- * Entry point for story.html. Thin on purpose, matching explore.js -- the deck
- * itself is in deck.js so the headless suite can import the parts it needs
- * without dragging in a page.
+ * Entry point for story-gsn.html. Mirrors main.js exactly but for the spec it
+ * hands over -- the deck is one argument, and everything that differs between
+ * the two sites is inside it.
  */
 
 import { mountDeck } from './deck.js';
-import { DECK } from './beats-rgl.js';
+import { DECK } from './beats-gsn.js';
 
 const fatal = (err) => {
   console.error(err);

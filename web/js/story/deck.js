@@ -23,14 +23,26 @@
 import { loadData } from '../data.js';
 import { TimeSeries } from '../timeseries.js';
 import { WindLayer, viewFromCamera } from '../wind.js';
-import { C, SOURCE_DISPLAY, footprintLUT } from '../palette.js';
+import { C, sourceDisplayFor, footprintLUT } from '../palette.js';
 import { MapView } from './mapview.js';
-import {
-  FRAMES, SMELL, SHOW_RECORD_LOW, RELEASES, resolveFrames, buildBeats, toSlides, resolvePlay,
-} from './beats.js';
+import { resolveFrames, buildDeck, toSlides, resolvePlay } from './engine.js';
 
 const $ = (id) => document.getElementById(id);
-const STORE_KEY = 'ghg.story.frames';
+
+/**
+ * Where a tuning session is remembered, per deck.
+ *
+ * ⚠ Both keys were unscoped, which was harmless while there was one deck and a
+ * silent corruption the moment there were two: tuning Gosan's dirty day would
+ * have written a frame index into the same slot Ridge Hill reads, and Ridge Hill
+ * would have opened on it. The frame indices are not even comparable between
+ * sites -- 193 is a Sunday in June at one and past the end of the record at the
+ * other.
+ */
+const storeKeys = (id) => ({
+  frames: `ghg.story.frames.${id}`,
+  look: `ghg.story.look.${id}`,
+});
 
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -40,20 +52,32 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
 /**
  * "Sunday 2 February, 12pm" rather than "Sun 02 Feb · 12:00 UTC".
  *
- * The deck says the date out loud in the same words the presenter would use. UTC
- * is dropped deliberately: in February, British time *is* UTC, and the caveat
- * costs more attention than it buys this audience.
+ * The deck says the date out loud in the same words the presenter would use, in
+ * the *station's* local time -- "Sunday, 11am" has to mean Sunday 11am where the
+ * sensor is, or the story of a working week is being told against the wrong
+ * clock. The zone is never printed: naming it costs more attention than it buys
+ * this audience.
+ *
+ * ⚠ This used to read the UTC parts and stop, which is right only where the
+ * station keeps UTC. It survived because Ridge Hill in February *is* UTC. Nine
+ * hours east it is not: every stamp would have been nine hours out and the day
+ * names would have flipped -- and a Sunday afternoon episode reading as Sunday
+ * morning is exactly the kind of wrong that no test catches and no audience
+ * questions. `tzOffsetH: 0` leaves Ridge Hill byte-identical.
+ *
+ * @param {number} tzOffsetH  hours to add to UTC. From the deck spec.
  */
-function friendly(d) {
-  const h = d.getUTCHours();
+function friendly(d, tzOffsetH = 0) {
+  const local = new Date(d.getTime() + tzOffsetH * 3600e3);
+  const h = local.getUTCHours();
   const hour = h === 0 ? 'midnight' : h === 12 ? 'midday'
     : h < 12 ? `${h}am` : `${h - 12}pm`;
-  return `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}, ${hour}`;
+  return `${DAYS[local.getUTCDay()]} ${local.getUTCDate()} ${MONTHS[local.getUTCMonth()]}, ${hour}`;
 }
 
-function readStore() {
+function readStore(key) {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
   } catch {
     // Private windows and blocked site data both throw here. A deck that will
@@ -63,18 +87,25 @@ function readStore() {
   }
 }
 
-function writeStore(frames) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(frames)); } catch { /* see above */ }
+function writeStore(key, frames) {
+  try { localStorage.setItem(key, JSON.stringify(frames)); } catch { /* see above */ }
 }
 
-export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
+/**
+ * Mount a deck.
+ *
+ * @param {object} deck  a deck spec -- `DECK` from a `beats-<site>.js`. Which
+ *   site this is, what it calls its gas, where its data lives and what its
+ *   moments are all come from here; nothing below names a site.
+ */
+export async function mountDeck({ deck } = {}) {
   const setProgress = (msg, frac) => {
     $('loadMsg').textContent = msg;
     $('loadBar').style.width = `${Math.round(frac * 100)}%`;
   };
 
   const params = new URLSearchParams(location.search);
-  const base = params.get('data') || defaultData;
+  const base = params.get('data') || deck.data;
 
   let data;
   try {
@@ -89,7 +120,24 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
     return null;
   }
 
+  // Which gas this deck is about. The export picks its own `defaultSpecies` and
+  // for both sites so far that is already the right one, but a deck that argues
+  // about one gas must not be able to end up drawing another because an export
+  // was re-run with a different default.
+  //
+  // `setSpecies` ignores a key it does not have, so the result is checked: a
+  // deck naming a gas its export does not carry would otherwise draw the wrong
+  // one in silence, with every caption still claiming the right one.
+  if (data.setSpecies(deck.species) !== deck.species) {
+    console.warn(`story: ${base} has no species "${deck.species}" — drawing "${data.activeSpecies}"`);
+  }
+
   const n = data.nTime;
+  // Hours per frame. Every "hours" the deck talks about -- a play window, a
+  // nudge -- is in these, and it is 1 only at Ridge Hill.
+  const stepHours = data.meta.timeStepHours || 1;
+  /** Frame index to a spoken date, in the station's own local time. */
+  const stamp = (t) => friendly(data.time(t), deck.tzOffsetH || 0);
   // Three separate things have to be true before a wind stop shows anything, and
   // they landed at different times: the export ships the atlases (`meta.wind`),
   // this page can sample them (`data.wind`), and something paints them. Gating
@@ -129,11 +177,13 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
   // number nothing on screen names. That is how the dirty day came up on the
   // wrong weather days after it was tuned. The write stays, so a tuning session
   // still survives a refresh; the read is gated, so a plain `story.html` always
-  // opens on the numbers in `beats.js`. `?dirty=153` still works either way --
+  // opens on the numbers in its beats file. `?dirty=153` still works either way --
   // an explicit override in the URL is visible in the URL.
   const tuning = params.get('tune') === '1';
+  const KEY = storeKeys(deck.id);
   const resolved = resolveFrames({
-    search: location.search, store: tuning ? readStore() : null, nTime: n,
+    search: location.search, store: tuning ? readStore(KEY.frames) : null, nTime: n,
+    defaults: deck.frames,
   });
   let frames = resolved.frames;
   if (resolved.rejected.length) {
@@ -145,7 +195,7 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
   let i = 0;                                  // current slide index
 
   function rebuild() {
-    acts = buildBeats(frames, { showRecordLow: SHOW_RECORD_LOW });
+    acts = buildDeck(deck, frames);
     slides = toSlides(acts);
     i = Math.max(0, Math.min(slides.length - 1, i));
   }
@@ -160,7 +210,7 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
   // everything else falls through the prototype chain unchanged.
   const chartData = Object.create(data, {
     units: { get: () => '' },
-    speciesLabel: { get: () => 'methane' },
+    speciesLabel: { get: () => deck.gasWord },
   });
   const ts = new TimeSeries($('ts'), chartData, { onScrub: (k) => setT(k) });
 
@@ -171,10 +221,12 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
 
   // ---- chrome -----------------------------------------------------------
   // How full the bar is: the reading's height above clean air, as a share of
-  // SMELL.span. The month's own min and max are deliberately not used -- see
-  // SMELL in beats.js for why, and for where these two numbers came from.
+  // `smell.span`. The record's own min and max are deliberately not used -- see
+  // SMELL in the deck's own beats file for why, and for where the two numbers
+  // came from.
+  const smell = deck.smell;
   const smellOf = (v) => (v == null ? 0
-    : Math.max(0, Math.min(1, (v - SMELL.base) / SMELL.span)));
+    : Math.max(0, Math.min(1, (v - smell.base) / smell.span)));
 
   function paintDots() {
     const el = $('dots');
@@ -208,20 +260,20 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
     // Presenter-only, behind N: the reading, then what the bar is actually
     // drawing. Two numbers are allowed here and nowhere else on screen.
     $('meterNum').textContent = v == null ? ''
-      : `${Math.round(v)} · +${Math.round(Math.max(0, v - SMELL.base))}`;
+      : `${Math.round(v)} · +${Math.round(Math.max(0, v - smell.base))}`;
   }
 
   function paintChrome() {
     const stop = slides[i];
     $('caption').textContent = stop.caption;
-    $('stamp').textContent = friendly(data.time(state.t));
+    $('stamp').textContent = stamp(state.t);
     // A stop whose animation is not built yet still shows its framing, and says
     // so, rather than being silently dropped from the running order.
     const missing = stop.needs.includes('wind') && !hasWind;
     $('pill').hidden = !missing;
     paintMeter(stop);
     $('scrubRange').value = String(state.t);
-    $('scrubTime').textContent = friendly(data.time(state.t));
+    $('scrubTime').textContent = stamp(state.t);
     $('scrubAnchor').textContent = stop.anchor ? `moment: ${stop.anchor}` : 'no moment on this slide';
   }
 
@@ -237,8 +289,8 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
   /**
    * Point the wind layer at this stop.
    *
-   * A release named in `beats.js` is resolved here, so `beats.js` stays free of
-   * imports and an unknown name fails loudly at the console rather than
+   * A release named in the deck spec is resolved here, so the beats file stays
+   * free of imports and an unknown name fails loudly at the console rather than
    * silently drawing an ambient-only slide that was meant to show a journey.
    */
   function aimWind(stop) {
@@ -249,7 +301,7 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
     if (!(stop.layers.wind > 0) && !stop.paint) { windLayer.setStop(null); return; }
     let release = null;
     if (stop.release) {
-      release = RELEASES[stop.release.from] || null;
+      release = (deck.releases || {})[stop.release.from] || null;
       if (!release) console.warn(`story: no release box named "${stop.release.from}"`);
     }
     windLayer.setStop({
@@ -280,7 +332,7 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
     map.resize();
     aimWind(stop);
 
-    play = resolvePlay(stop.play, { anchor: stop.anchor, frames, nTime: n });
+    play = resolvePlay(stop.play, { anchor: stop.anchor, frames, nTime: n, stepHours });
     holdsLeft = play ? [...play.holdAt] : [];
     state.playing = !!play;
 
@@ -312,14 +364,23 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
     const stop = slides[i];
     if (!stop.anchor) { setT(t); return; }
     frames = { ...frames, [stop.anchor]: Math.max(0, Math.min(n - 1, Math.round(t))) };
-    writeStore(frames);
+    writeStore(KEY.frames, frames);
     rebuild();
     enter(false);
   }
 
+  /**
+   * Move the moment by a number of *hours*, which is what `[` and `]` promise.
+   *
+   * Rounded to whole frames, and never to none: at a 2-hourly export a one-hour
+   * nudge is half a frame, and a key that visibly does nothing reads as a broken
+   * deck rather than as a sub-frame request. So the smallest nudge is one frame,
+   * whatever that is worth in hours here.
+   */
   function nudge(hours) {
     const stop = slides[i];
-    retime((stop.anchor ? frames[stop.anchor] : state.t) + hours);
+    const steps = Math.sign(hours) * Math.max(1, Math.round(Math.abs(hours) / stepHours));
+    retime((stop.anchor ? frames[stop.anchor] : state.t) + steps);
   }
 
   // ---- render loop ------------------------------------------------------
@@ -400,8 +461,8 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
   });
 
   $('clearFrames').addEventListener('click', () => {
-    try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
-    frames = { ...FRAMES };
+    try { localStorage.removeItem(KEY.frames); } catch { /* ignore */ }
+    frames = { ...deck.frames };
     rebuild();
     enter(false);
   });
@@ -411,8 +472,10 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
   // Same bargain as the frame scrubber: tune on the screen you are presenting
   // on, then copy the numbers back into SOURCE_DISPLAY in palette.js. Persisted
   // under its own key so a tuned look survives a refresh without entangling
-  // itself with the frame overrides.
-  const LOOK_KEY = 'ghg.story.look';
+  // itself with the frame overrides -- and, since the split, under its own key
+  // *per deck*, because the two sites draw different inventories on different
+  // display windows and a contrast tuned for one says nothing about the other.
+  const LOOK_KEY = KEY.look;
   const lookInputs = { floor: $('lookFloor'), ceil: $('lookCeil'), gamma: $('lookGamma') };
 
   // The window is settled, so the row is off the panel unless it is asked for.
@@ -438,7 +501,15 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
   }
 
   try {
-    const stored = JSON.parse(localStorage.getItem(LOOK_KEY) || 'null');
+    // The unscoped key is what this was stored under before the split, and it
+    // is read back if the scoped one is empty. Not politeness: a look tuned in
+    // an earlier session is applied on *every* load, so dropping it would change
+    // how Ridge Hill looks -- and the one thing this refactor promises is that
+    // Ridge Hill is unchanged. Written back scoped, so it migrates on first
+    // tune. Delete this fallback once nobody's browser is carrying one.
+    const stored = JSON.parse(
+      localStorage.getItem(LOOK_KEY) || localStorage.getItem('ghg.story.look') || 'null',
+    );
     // Only numbers, and only the three keys -- a stale or hand-mangled entry
     // must not be able to blank the map.
     if (stored) {
@@ -472,7 +543,12 @@ export async function mountDeck({ defaultData = 'data-rgl/' } = {}) {
 
   $('resetLook').addEventListener('click', () => {
     try { localStorage.removeItem(LOOK_KEY); } catch { /* ignore */ }
-    applyLook({ ...SOURCE_DISPLAY }, false);
+    // The same fallback `mapview` opens on: the sources card where the deck has
+    // one, the coarse map where it does not. Reading only `fluxHires` here
+    // would reset the CFC-11 deck to methane's window, which paints its map
+    // empty -- the exact failure `SOURCE_DISPLAY_BY_SPECIES` exists to prevent,
+    // reintroduced by the one button whose job is to undo a mistake.
+    applyLook(sourceDisplayFor(data.meta.fluxHires || data.meta.flux), false);
   });
 
   function toggleScrubber(force) {
