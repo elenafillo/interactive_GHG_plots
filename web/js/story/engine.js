@@ -116,6 +116,13 @@ export const DEFAULT_LAYERS = {
   graticule: 0, station: 1, cities: 0,
   footprint: 0, flux: 0, contribution: 0, wind: 0, factories: 0,
   fluxHi: 0, srcFarming: 0, srcWaste: 0, srcFossil: 0,
+  // The CFC-11 deck's five named regions. Listed here rather than only in that
+  // deck's fork of the map because every stop of every deck carries a full layer
+  // set -- a layer the table does not know about is one a stop can name and have
+  // silently ignored, which the suite checks for and this is the cheap half of.
+  // Costs the other two decks nothing: their exports carry no beacons, so the
+  // layer draws nothing however it is set.
+  beacons: 0,
 };
 
 /**

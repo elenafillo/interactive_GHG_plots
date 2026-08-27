@@ -12,7 +12,8 @@ unchanged for another site.
 Outputs (into the site's output directory):
     fp_atlas.png      footprint tensor, one tile per timestep, log10-scaled uint8
     meta.json         grid, time axis, scaling constants, station, atlas layout
-    series.json       observations + forward-modelled enhancement + met + land fraction
+    series.json       observations + forward-modelled enhancement + met + land
+                      fraction + beacon levels (when the site has beacons)
     flux.png          emissions on the same grid, log10-scaled uint8 (when available)
     flux_hi.png       the same emissions at 0.1 deg, for the deck's sources card
     src_*.png         one raster per source family, same grid and scale as flux_hi
@@ -248,12 +249,31 @@ SITES = {
                 "obs": "data/obs/*_cfc-11_*",
                 # ⚠ **A prior, not an inventory, and the deck must never call it
                 # one.** There is no CFC-11 inventory for this region -- that
-                # absence is the deck's whole argument. This file is 40.0 Gg/yr
-                # spread over East Asia *by 2015 population* (SEDAC GPWv4, doi
-                # 10.7927/H4JQ0XZW), which is the assumption an inversion starts
-                # from when it knows nothing: "it probably comes from wherever
-                # the people are". Verified to integrate to 40.07 Gg/yr against
-                # its own title, of which 15.04 (38%) falls inside this view.
+                # absence is the deck's whole argument. This file is emission
+                # spread over East Asia *by where people live*, which is the
+                # assumption an inversion starts from when it knows nothing:
+                # "it probably comes from wherever the people are".
+                #
+                # ⚠ **This is the 2016 rebuild, and the swap from the 2002 file
+                # was deliberate.** `cfc-11-population_EASTASIA_2002.nc` (SEDAC
+                # GPWv4) was measured to be **misregistered by about 1.5 cells
+                # north and 0.5 east** -- ~39 km of latitude -- against four
+                # independent regions of a 1 km WorldPop truth, and 52% of its
+                # cells were negative from regridder ringing. Both symptoms were
+                # the same code. Do not go back to it, and do not try to "fix"
+                # it by shifting the raster.
+                #
+                # This file is an area-conservative overlap sum of the 1 km
+                # raster in `flux_hires` below (population preserved to
+                # 0.0001%), so the coarse map and the hi-res one cannot disagree
+                # about where the people are -- which matters because `G` flips
+                # between them on screen. Corner-referenced GeoTIFF tiepoints,
+                # so it is correctly registered by construction, and it has
+                # **zero negative cells**.
+                #
+                # Scaled so the emission inside this view is 15.037 Gg/yr --
+                # exactly what the 2002 map put there -- so the forward model
+                # keeps its old scale and only the *placement* changes.
                 #
                 # It sits on **exactly the NAME footprint grid** -- 340 x 391,
                 # coordinates bit-identical to the footprint files, checked --
@@ -266,7 +286,7 @@ SITES = {
                 # "20 Gg over East Asia, 20 Gg over everywhere else". A
                 # two-tone rectangle, and a strong slide about how little was
                 # known -- but not this key, which the map draws as geography.
-                "flux": "data/fluxes/cfc-11/cfc-11-population_EASTASIA_2002.nc",
+                "flux": "data/fluxes/cfc-11/cfc-11-population_EASTASIA_2016.nc",
                 # Not methane's -11.5..-7.0: inside this view the field runs
                 # 10^-17.58 to 10^-10.72, which is below CH4's floor everywhere,
                 # so on that window every cell pins to the darkest step and the
@@ -279,7 +299,7 @@ SITES = {
         "view": {"lat": (22.0, 46.0), "lon": (105.0, 145.0)},
         "time_step": 2,
         "mass_tol": 0.01,
-        # The 1 km population prior, drawn as its own layer rather than
+        # The finer population prior, drawn as its own layer rather than
         # replacing the coarse one. Both ship: `flux` above stays on the
         # footprint grid because `forward_model` multiplies it by the footprint
         # cell for cell, and a finer emissions map cannot make the transport any
@@ -288,33 +308,114 @@ SITES = {
         #
         # `path` rather than `dir` is what routes it to
         # _export_flux_hires_raster: the file is already the map, in mol/m2/s,
-        # on WorldPop's native 30 arc-second grid with no resampling anywhere in
-        # its history.
+        # so the only steps are crop and encode.
+        #
+        # ⚠ **~10 km, not the 1 km file, and the deck's cameras are the reason.**
+        # This layer used to be `..._2016_1km.nc` at 1/120 deg with a `DELTA`
+        # stop at span 6 to make it visible. That stop is gone -- the deck does
+        # not want a zoom into the Yangtze -- and at the framings that remain the
+        # 1 km raster was not a hi-res map but an aliasing machine: at `DOMAIN`'s
+        # span of 30 a 0.00833 deg cell draws at **0.39 px**, and the source
+        # layers use `imageSmoothingEnabled = !crispSources`, which is
+        # nearest-neighbour by default. About 8% of the cells survived the
+        # downscale and *which* 8% moved with the camera, so towns blinked in
+        # and out -- for 4.5 MB. At 1/12 deg a cell is **3.9 px** at `DOMAIN` and
+        # 5.8 px at `CHINA`, which is what "reads as cells" actually requires.
+        #
+        # Built by `scripts/coarsen_flux.py` as an exact 10x10 block sum of the
+        # 1 km file: ten 1/120 deg cells tile one 1/12 deg cell, so there is no
+        # overlap arithmetic and no interpolation, and it cannot reintroduce the
+        # registration offset that made the 2002 SEDAC prior unusable. Verified
+        # conservative -- population to +0.0001%, the view's emission to -0.01%,
+        # and zero negative cells.
         #
         # logRange is the site's own -18..-10, shared with flux.png so a byte
-        # means the same emission on both. At 1 km that clips 164 cells of
-        # 3.78 M -- 0.38% of the emission, all of it city centres already
-        # painted at full brightness. Widening to -9 would clear it but would
-        # force flux.png to be re-cut on the same window.
+        # means the same emission on both. Unlike the 1 km file, which clipped
+        # 164 city-centre cells at the top, **nothing clips here**: block-summing
+        # averages the peaks down to a maximum of 10^-10.15.
         #
         # ⚠ Coverage is CHN, TWN, JPN, KOR and PRK. Vietnam, Laos, Myanmar,
         # Mongolia and the Russian Far East clip the view box and are blank --
         # do not write a caption that reads the map as a complete accounting of
         # where people live.
         "flux_hires": {
-            "path": "data/fluxes/cfc-11/cfc-11-population_EASTASIA_2016_1km.nc",
+            "path": "data/fluxes/cfc-11/cfc-11-population_EASTASIA_2016_10km.nc",
             "species": "cfc-11",
             "logRange": (-18.0, -10.0),
             "label": "Where people live",
             "year": 2016,
             "source": ("WorldPop R2025A constrained, UN-adjusted, 1 km, 2016 "
-                       "(CHN, TWN, JPN, KOR, PRK), scaled to the view's own "
-                       "emission total"),
+                       "(CHN, TWN, JPN, KOR, PRK), block-summed to ~10 km and "
+                       "scaled to the view's own emission total"),
         },
         # Deliberately no `factories`: factory_locations_EASTASIA.csv is an
         # HFC-23 plant list and captioning it as CFC-11 would be a lie the map
         # cannot correct.
         #
+        # Five named regions, one letter each, and the mechanic the whole deck
+        # runs on: on any hour some are lit -- the station can smell that
+        # direction today -- and the bar says how much is arriving. One of them
+        # is lit on *every* smelly hour, and that one is the source. It is C,
+        # Shandong, and that is measured rather than staged:
+        # `scripts/measure_beacons.py` holds the reference implementation and
+        # the answer key, which the export re-derives and prints on every run.
+        #
+        #   C Shandong +0.873 | D +0.522 | E +0.085 | A -0.056 | B -0.179
+        #
+        # ⚠ **A and B are honest negatives and must stay negatives.** Korea is
+        # flat and Japan is *anti*-correlated -- when the sensor is looking at
+        # Japan the reading is below average -- which is what makes the beat
+        # "yes we can smell them, no they aren't smelly" real data. If a
+        # re-export ever moves those signs, the deck is arguing something else.
+        #
+        # ⚠ **Land only.** A beacon's value is the footprint summed over the
+        # land cells inside its box and nothing over water. Emissions come off
+        # land, so sensitivity to the Yellow Sea is not sensitivity to Shandong
+        # -- and the boxes hold very different amounts of sea (B is 43% land, D
+        # is 99%), which made them incomparable for a reason that had nothing to
+        # do with the air. It also makes the answer stronger: C goes from
+        # r = +0.828 counting everything to +0.873 counting land.
+        #
+        # ⚠ **One shared pair of absolute cuts, on the land-only sum divided by
+        # the box's land-cell count** -- deliberately *not* the per-beacon
+        # normalisation the plan called for. That plan rested on the claim that
+        # on one shared scale A and B would never light at all, and the claim is
+        # false: measured lit rates are A 58%, B 57%, C 42%, D 40%, E 53%, so
+        # nothing goes dark. The 1.94-against-0.06 figure behind the claim was
+        # one smelly frame, not a distribution. Shared cuts are also *stronger*
+        # -- C separates lit from dark by +11.0 ppt against the per-beacon
+        # scheme's +9.2 -- and they mean the same physical thing for every
+        # letter, which per-beacon cuts never did.
+        #
+        # ⚠ Half-open [lo, hi) on both axes, which is why C starts where D ends
+        # rather than at the 34.5 they originally shared. The export refuses to
+        # run if two boxes claim a cell.
+        "beacons": {
+            # How selective "lit" is. ⚠ A TUNING KNOB, not a finding -- it sets
+            # how many letters glow at once, which is a decision to take with
+            # the deck on screen and not from a table. The pooled 50th/80th
+            # here light about 2.5 of the 5 on the average frame; 75/90 light
+            # 1.2. Changing it cannot change the answer -- correlation does not
+            # care where a threshold sits -- only how busy the map looks.
+            "cutPercentiles": (65.0, 90.0),
+            # The aggregation box is large and the drawn dot is small and sits
+            # on the city. `dot` is [lon, lat], as basemap.json orders points.
+            #
+            # ⚠ B's dot is Fukuoka, not Osaka: Osaka at 135.5 E sits outside the
+            # met store's eastern edge at 134.77, and Fukuoka is inside it.
+            "boxes": [
+                {"id": "A", "name": "South Korea",
+                 "lat": (34.5, 38.2), "lon": (126.0, 129.6), "dot": (126.98, 37.57)},
+                {"id": "B", "name": "Western Japan",
+                 "lat": (32.5, 36.0), "lon": (129.6, 136.0), "dot": (130.40, 33.59)},
+                {"id": "C", "name": "Shandong",
+                 "lat": (34.5, 38.2), "lon": (115.0, 122.5), "dot": (116.99, 36.67)},
+                {"id": "D", "name": "Anhui and Jiangsu",
+                 "lat": (31.5, 34.5), "lon": (116.0, 120.5), "dot": (118.80, 32.06)},
+                {"id": "E", "name": "South of Shanghai",
+                 "lat": (28.3, 31.2), "lon": (118.8, 122.5), "dot": (120.16, 30.27)},
+            ],
+        },
         # Wind for the arrows and drifting parcels, sliced from
         # data/met/EASTASIA_GSN_Met_2016/EASTASIA_GSN_Met_2016.zarr by
         # scripts/slice_met.py. Model level 2, whose *true* height is 76.7 m:
@@ -1315,6 +1416,26 @@ def _pearson(a, b):
     return float((a * b).sum() / math.sqrt((a * a).sum() * (b * b).sum()))
 
 
+def _land_mask_on(lats: np.ndarray, lons: np.ndarray) -> np.ndarray | None:
+    """The land mask sampled onto an arbitrary lat/lon grid, or None if absent.
+
+    Nearest-neighbour, and the mask is written on a 0-360 longitude convention
+    while footprint domains may be on either -- so the lookup normalises before
+    it searches. Shared so that `land_fraction` and `export_beacons` cannot
+    drift into disagreeing about which cells are land; a beacon that counted a
+    different coastline from the series under it would be wrong in a way nobody
+    would see.
+    """
+    mask_path = REPO / "data" / "ancillary" / "land_cover.nc"
+    if not mask_path.exists():
+        return None
+    lc = xr.open_dataset(mask_path)
+    ml = lc.lon.values
+    ci = np.abs(ml[None, :] - np.mod(lons, 360.0)[:, None]).argmin(axis=1)
+    ri = np.abs(lc.lat.values[None, :] - lats[:, None]).argmin(axis=1)
+    return lc.land_binary_mask.values[np.ix_(ri, ci)].astype("float64")  # (lat, lon)
+
+
 def land_fraction(fp_ds, view, time_step):
     """Share of each timestep's footprint mass sitting over land.
 
@@ -1323,22 +1444,11 @@ def land_fraction(fp_ds, view, time_step):
     continent or at open ocean -- using only the footprint and a land mask, so
     it works for any site whether or not fluxes exist.
     """
-    mask_path = REPO / "data" / "ancillary" / "land_cover.nc"
-    if not mask_path.exists():
+    fp = _slice_view(fp_ds.fp, view)
+    mask = _land_mask_on(fp.lat.values, fp.lon.values)
+    if mask is None:
         print("  ! no land_cover.nc, skipping land fraction")
         return None
-
-    lc = xr.open_dataset(mask_path)
-    fp = _slice_view(fp_ds.fp, view)
-    lats = fp.lat.values
-    lons = fp.lon.values
-
-    # The mask is on 0-360; footprint domains may be either convention.
-    ml = lc.lon.values
-    target = np.mod(lons, 360.0)
-    ci = np.abs(ml[None, :] - target[:, None]).argmin(axis=1)
-    ri = np.abs(lc.lat.values[None, :] - lats[:, None]).argmin(axis=1)
-    mask = lc.land_binary_mask.values[np.ix_(ri, ci)].astype("float64")  # (lat, lon)
 
     nt = fp.sizes["time"]
     out = np.zeros(nt)
@@ -1352,13 +1462,163 @@ def land_fraction(fp_ds, view, time_step):
     return out
 
 
-def _to_frames(raw, n, time_step, label):
+def export_beacons(spec: dict | None, fp_ds, view: dict, time_step: int, obs=None):
+    """Named regions the audience is asked to choose between, lit per frame.
+
+    A beacon is a box of ground with a letter and a dot on a city. Its value on
+    a given hour is the footprint summed over the **land** cells inside the box
+    and nothing over water: emissions come off land, so sensitivity to the
+    Yellow Sea is not sensitivity to Shandong -- and the boxes hold very
+    different amounts of sea (43% to 99%), which made the raw sums incomparable
+    for a reason that had nothing to do with the air.
+
+    That value is divided by the box's land-cell count and compared against
+    **one shared pair of absolute cuts** for all five, giving 0 dark, 1 medium,
+    2 high. Dividing by area is still a normalisation, but a physical one --
+    sensitivity per unit of ground that could be emitting -- and it is the same
+    operation for every letter, which is exactly what per-beacon cuts were not.
+    See the `beacons` block in `SITES` for why that replaced the per-beacon
+    scheme the plan proposed.
+
+    Computed here rather than in the browser: this is the footprint at full
+    precision, and the page would otherwise have to re-aggregate a quantised
+    atlas over five boxes on every frame to arrive at a worse answer.
+
+    Returns `(meta_block, levels)`, `levels` being one row of small ints per
+    beacon for series.json. Both are None at a site with no beacons.
+    """
+    if not spec:
+        return None, None
+
+    lats = fp_ds.lat.values
+    lons = fp_ds.lon.values
+    mask = _land_mask_on(lats, lons)
+    if mask is None:
+        print("  ! no land_cover.nc, skipping beacons")
+        return None, None
+
+    boxes = spec["boxes"]
+    cells = []
+    claimed: dict[tuple[int, int], str] = {}
+    for b in boxes:
+        # Half-open [lo, hi) on both axes. As first written C and D both
+        # contained lat 34.5; a cell counted into two beacons would make them
+        # not independent, which is the one thing act 5 asks of them.
+        rows = np.where((lats >= b["lat"][0]) & (lats < b["lat"][1]))[0]
+        cols = np.where((lons >= b["lon"][0]) & (lons < b["lon"][1]))[0]
+        for r in rows:
+            for c in cols:
+                owner = claimed.setdefault((int(r), int(c)), b["id"])
+                if owner != b["id"]:
+                    raise SystemExit(
+                        f"beacons {owner} and {b['id']} both contain the cell at "
+                        f"lat {lats[r]:.3f}, lon {lons[c]:.3f} -- the intervals "
+                        "must be half-open and the boxes disjoint"
+                    )
+        cells.append((rows, cols, mask[np.ix_(rows, cols)]))
+
+    nt_full = fp_ds.sizes["time"]
+    vals = np.zeros((len(boxes), nt_full))
+    for i in range(0, nt_full, 48):
+        block = fp_ds.fp.isel(time=slice(i, i + 48)).transpose("time", "lat", "lon").values.astype("float64")
+        for k, (rows, cols, sub) in enumerate(cells):
+            vals[k, i : i + block.shape[0]] = (block[:, rows][:, :, cols] * sub[None]).sum(axis=(1, 2))
+    # Footprint-derived, so subsampled and not window-averaged: frame i *is*
+    # hour i*step, the same rule the atlas and the land fraction follow.
+    vals = vals[:, ::time_step]
+    n = vals.shape[1]
+
+    land_cells = np.array([c[2].sum() for c in cells])
+    dead = [b["id"] for b, lc in zip(boxes, land_cells) if lc <= 0]
+    if dead:
+        raise SystemExit(f"beacon box(es) {', '.join(dead)} contain no land cells")
+    dens = vals / land_cells[:, None]
+
+    lo_pct, hi_pct = spec["cutPercentiles"]
+    pool = dens.ravel()
+    cuts = (float(np.percentile(pool, lo_pct)), float(np.percentile(pool, hi_pct)))
+    levels = (dens >= cuts[0]).astype(int) + (dens >= cuts[1]).astype(int)
+
+    print(f"  {len(boxes)} beacons over {n} frames, land cells only")
+    print(f"    shared cuts at the pooled {lo_pct:g}th / {hi_pct:g}th percentile of "
+          f"footprint per land cell: {cuts[0]:.3e} / {cuts[1]:.3e}")
+    print(f"    {(levels > 0).sum(axis=0).mean():.1f} of {len(boxes)} lit on the average frame")
+
+    # The answer key: the correlation between a beacon's value and the reading.
+    # It is what the deck rests on, and it is invariant both to the cuts above
+    # and to any constant background, so it measures the data and not the
+    # tuning. Exported per box so the suite can assert a re-export has not
+    # quietly inverted the argument -- nothing on screen may read it, since it
+    # is the answer to the question act 5 asks the audience.
+    obs_v = None if obs is None else _to_frames(obs, n, time_step)
+    seen = None if obs_v is None else np.isfinite(obs_v)
+    if seen is not None and seen.any():
+        print(f"    answer key against {int(seen.sum())} observed frames "
+              f"(r is invariant to the cuts; the separation is a difference of "
+              f"means and so free of the background):")
+
+    out_boxes = []
+    for k, b in enumerate(boxes):
+        rows, cols, sub = cells[k]
+        lit_frac = float((levels[k] > 0).mean())
+        high_frac = float((levels[k] == 2).mean())
+        r = sep = None
+        if seen is not None and seen.any():
+            r = _pearson(dens[k][seen], obs_v[seen])
+            lit, dark = seen & (levels[k] > 0), seen & (levels[k] == 0)
+            if lit.any() and dark.any():
+                sep = float(obs_v[lit].mean() - obs_v[dark].mean())
+        inside = (view["lat"][0] <= b["lat"][0] and b["lat"][1] <= view["lat"][1]
+                  and view["lon"][0] <= b["lon"][0] and b["lon"][1] <= view["lon"][1])
+        if not inside:
+            print(f"    ! {b['id']} reaches outside the view box -- it is still "
+                  "aggregated, but the camera can never show the whole of it")
+        print(f"    {b['id']} {b['name']:<20s} {len(rows):3d} x {len(cols):3d} cells, "
+              f"{int(sub.sum()):4d} land ({sub.mean():.0%})  lit {lit_frac:>4.0%} "
+              f"high {high_frac:>4.0%}"
+              + ("" if r is None else f"   r {r:>+6.3f}"
+                 + ("" if sep is None else f"  lit-minus-dark {sep:>+5.1f}")))
+        out_boxes.append({
+            "id": b["id"],
+            "name": b["name"],
+            "lat": [float(b["lat"][0]), float(b["lat"][1])],
+            "lon": [float(b["lon"][0]), float(b["lon"][1])],
+            # [lon, lat], matching basemap.json's [x, y] and the factory points.
+            "dot": [float(b["dot"][0]), float(b["dot"][1])],
+            "cells": int(sub.size),
+            "landCells": int(sub.sum()),
+            "landFrac": round(float(sub.mean()), 4),
+            "litFrac": round(lit_frac, 4),
+            "highFrac": round(high_frac, 4),
+            "r": None if r is None else round(r, 3),
+            "sepPpx": None if sep is None else round(sep, 2),
+        })
+
+    meta_block = {
+        "mask": "land_cover.nc",
+        # What the cuts are cut from, spelled out: the browser gets levels, not
+        # values, and this is the only record of what a level means.
+        "value": "footprint summed over land cells in the box, per land cell",
+        "cutPercentiles": [float(lo_pct), float(hi_pct)],
+        "cuts": [cuts[0], cuts[1]],
+        "nTime": n,
+        # series.beacons[i] belongs to boxes[i]. Kept parallel rather than keyed
+        # by letter so the per-frame rows stay 5 x 672 small ints.
+        "boxes": out_boxes,
+    }
+    return meta_block, [[int(v) for v in row] for row in levels]
+
+
+def _to_frames(raw, n, time_step, label=None):
     """Put an hourly observation array onto the frame axis.
 
     Footprint-derived quantities are subsampled -- frame i *is* hour i*step --
     but observations are averaged over each window instead. Sparse instruments
     report every few hours, so plain subsampling would silently discard about
     half the Gosan samples purely because they landed on odd hours.
+
+    `label` is what the count is reported under; pass none to stay quiet, which
+    is what a second caller wanting the same array is for.
     """
     raw = np.asarray(raw, dtype="float64")
     if time_step == 1:
@@ -1370,12 +1630,13 @@ def _to_frames(raw, n, time_step, label):
     with warnings.catch_warnings():  # all-NaN windows are expected gaps
         warnings.simplefilter("ignore", RuntimeWarning)
         out = np.nanmean(win, axis=1)
-    print(f"    {int(np.isfinite(out).sum())} of {n} frames carry {label} "
-          f"after {time_step}-step averaging")
+    if label:
+        print(f"    {int(np.isfinite(out).sum())} of {n} frames carry {label} "
+              f"after {time_step}-step averaging")
     return out
 
 
-def export_series(fp_ds, species_data, time_step, out_dir, cfg):
+def export_series(fp_ds, species_data, time_step, out_dir, cfg, beacon_levels=None):
     """One time axis and one land-fraction series, plus a block per species.
 
     Observations and emissions are optional per species; whatever is present
@@ -1449,6 +1710,10 @@ def export_series(fp_ds, species_data, time_step, out_dir, cfg):
         "windDir": col("wind_direction", 1),
         "windSpeed": col("wind_speed", 2),
         "pblh": col("PBLH", 1),
+        # 0 dark / 1 medium / 2 high per frame, one row per beacon in the same
+        # order as meta.beacons.boxes. Null at every site without beacons, which
+        # is every site but the CFC-11 deck -- see `export_beacons`.
+        "beacons": beacon_levels,
     }
     (out_dir / "series.json").write_text(json.dumps(series, separators=(",", ":")), encoding="utf-8")
     print(f"  wrote series.json  {(out_dir / 'series.json').stat().st_size / 1e3:.0f} KB")
@@ -1457,6 +1722,7 @@ def export_series(fp_ds, species_data, time_step, out_dir, cfg):
         "species": summary,
         "defaultSpecies": default,
         "hasLandFrac": landfrac is not None,
+        "hasBeacons": beacon_levels is not None,
         "nTime": n,
     }
 
@@ -1611,8 +1877,20 @@ def export_site(site: str, time_step: int | None = None, simplify: float = 0.02)
             flux_meta["species"] = spec["key"]
             break
 
+    # Before the series, because the levels ride inside series.json. The
+    # observations are handed over only so the answer key can be measured and
+    # reported; the beacons themselves are footprint and land mask alone.
+    print("beacons ...")
+    beacon_obs = next(
+        (species_data[s["key"]][0] for s in cfg["species"]
+         if species_data[s["key"]][0] is not None),
+        None,
+    )
+    beacons, beacon_levels = export_beacons(
+        cfg.get("beacons"), fp_ds, cfg["view"], time_step, beacon_obs)
+
     print("series ...")
-    series_meta = export_series(fp_ds, species_data, time_step, out, cfg)
+    series_meta = export_series(fp_ds, species_data, time_step, out, cfg, beacon_levels)
 
     print("hi-res emissions ...")
     flux_hires = export_flux_hires(cfg.get("flux_hires"), cfg["view"], out)
@@ -1640,6 +1918,10 @@ def export_site(site: str, time_step: int | None = None, simplify: float = 0.02)
         "flux": flux_meta,
         "fluxHires": flux_hires,
         "factories": factories,
+        # Null at every site but the CFC-11 deck. Optional the whole way down,
+        # like `factories`: a consumer gates on this being present rather than
+        # assuming the boxes are there.
+        "beacons": beacons,
         "wind": wind_meta,
         "series": series_meta,
         "timeStepHours": time_step,

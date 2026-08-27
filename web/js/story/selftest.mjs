@@ -265,12 +265,12 @@ const SITES = [
     engine: false,
     /**
      * KST, like Gosan's. Two moments, not three -- and note the order: the
-     * **clean day is nineteen days after the dirty one**, which is a break with
+     * **clean day is nine days after the dirty one**, which is a break with
      * both other decks and the reason `beats-cfc11.js` may not say "six days
      * later". If a re-export ever slides the axis, this table is what notices.
      */
     times: {
-      dirty: { says: 'Thu 16 Jun 09:00 KST', is: '2016-06-16 09:00' },
+      dirty: { says: 'Sun 26 Jun 11:00 KST', is: '2016-06-26 11:00' },
       clean: { says: 'Tue 5 Jul 23:00 KST', is: '2016-07-05 23:00' },
     },
     /**
@@ -597,16 +597,40 @@ async function runSite(site) {
       check('it is a single layer, not a card',
         !!(hi.layers && hi.layers.total) && Object.keys(hi.layers).length === 1,
         Object.keys(hi.layers || {}).join(','));
+      // ⚠ Recalibrated: this used to demand 4x the cell *count* per axis, which
+      // is an aspect-ratio rule wearing a fineness rule's clothes. The NAME grid
+      // is anisotropic -- 0.3509 deg of longitude against 0.2353 of latitude --
+      // so latitude always binds first, and *any* square grid coarser than about
+      // 6.5 km failed it however much finer it actually was. The CFC-11 deck's
+      // ~10 km map is 4.2x finer in longitude, 2.8x in latitude and carries 11.9x
+      // the cells, and was being called "not finer than the coarse map".
+      //
+      // So compare cell sizes, which is what the words mean, and keep a margin
+      // on both: meaningfully finer on each axis, and a real multiple overall.
+      // The claim being defended is that the layer earns its bytes; the framing
+      // check below is what defends it being *visible*.
+      const coarseDLon = (v.lonMax - v.lonMin) / meta.footprint.grid.nx;
+      const coarseDLat = (v.latMax - v.latMin) / meta.footprint.grid.ny;
+      const hiDLon = (hi.grid.lonMax - hi.grid.lonMin) / hi.grid.nLon;
+      const hiDLat = (hi.grid.latMax - hi.grid.latMin) / hi.grid.nLat;
+      const cellRatio = (hi.grid.nLon * hi.grid.nLat)
+        / (meta.footprint.grid.nx * meta.footprint.grid.ny);
       check('it is finer than the coarse map',
-        hi.grid.nLon > meta.footprint.grid.nx * 4 && hi.grid.nLat > meta.footprint.grid.ny * 4,
-        `${hi.grid.nLon}x${hi.grid.nLat} vs ${meta.footprint.grid.nx}x${meta.footprint.grid.ny}`);
+        coarseDLon / hiDLon >= 2 && coarseDLat / hiDLat >= 2 && cellRatio >= 8,
+        `${(coarseDLon / hiDLon).toFixed(1)}x lon, ${(coarseDLat / hiDLat).toFixed(1)}x lat, `
+        + `${cellRatio.toFixed(1)}x cells`);
       check('it covers the view',
         hi.grid.lonMin <= v.lonMin + 0.01 && hi.grid.lonMax >= v.lonMax - 0.01
         && hi.grid.latMin <= v.latMin + 0.01 && hi.grid.latMax >= v.latMax - 0.01,
         `${hi.grid.lonMin}..${hi.grid.lonMax}, ${hi.grid.latMin}..${hi.grid.latMax}`);
 
-      // The one that would be a lie on screen rather than a crash: `G` flips
-      // between this raster and the coarse one, and a viewer reads that as a
+      // The one that would be a lie on screen rather than a crash. ⚠ The note
+      // that used to sit here said `G` flips between the two rasters; it does
+      // not -- `deck.js` binds `G` to `crispSources`, the smoothing switch. The
+      // check stands on firmer ground anyway: the two files are *the same field
+      // at two resolutions*, so a byte has to mean the same emission on both or
+      // a stop that swaps one for the other is silently rescaling. A viewer
+      // reads a resolution change as a
       // change of resolution. If the two encode on different windows it is also
       // a change of scale, and the same colour means two different emissions.
       check('it shares the coarse map\'s log window',
@@ -714,8 +738,25 @@ async function runSite(site) {
 
       // Every stop that turns the layer on has to be looking at somewhere the
       // map is not empty, or the caption points at blank ocean.
+      //
+      // ⚠ The *existence* claim is about emissions being drawn at all, not about
+      // which resolution draws them. This used to demand a `flux` stop, which
+      // was true of every deck until the CFC-11 one moved its emissions beats
+      // onto `fluxHi` at the wide cameras and stopped drawing the coarse raster
+      // anywhere. That deck still ships `flux.png` -- `meta.flux` drives the
+      // tuning panel's reset and the per-species display window -- so the raster
+      // checks above are still worth running on it; what is no longer true is
+      // that a stop paints it.
+      //
+      // The framing test below stays on the `flux` stops alone. A deck that
+      // draws only `fluxHi` has its own framing guard in the hi-res section, and
+      // widening this one would put Ridge Hill's zoomed source-card stops
+      // through a coarse-raster test they were never written against.
       const onStops = slides.filter((s) => s.layers.flux > 0);
-      check('some stop actually draws it', onStops.length > 0, `${onStops.length} stops`);
+      const drawsEmissions = slides.some((s) => s.layers.flux > 0 || s.layers.fluxHi > 0);
+      check('some stop actually draws an emissions map', drawsEmissions,
+        `${onStops.length} coarse, `
+        + `${slides.filter((s) => s.layers.fluxHi > 0).length} hi-res`);
       const inFrame = onStops.every((s) => {
         const half = s.camera.span / 2;
         const halfLat = (s.camera.span * (9 / 16)) / 2;
@@ -857,65 +898,129 @@ async function runSite(site) {
       p.to < FRAMES.dirty + H, `${p.to} against the old arithmetic's ${FRAMES.dirty + H}`);
   }
 
-  // ---- play windows land on real observations ------------------------------
+  // ---- play windows come to rest on real observations ----------------------
   //
-  // `paintMeter` maps a null reading through `smellOf(null) -> 0`, so a frame
-  // with no observation draws an **empty bar** -- and an empty bar means clean
-  // air. Playing a window across a gap therefore says "there is nothing here" in
-  // the one register the audience reads fastest, while the caption says the
-  // opposite. Gosan's record is a third empty, so this is a live hazard there
-  // rather than a theoretical one. (§3's third meter state is the real fix; this
-  // is what stops a window being *written* across a gap in the meantime.)
+  // **This rule used to be twice as strict, and the meter's third state is what
+  // relaxed it.** `paintMeter` mapped a null reading through `smellOf(null) -> 0`,
+  // so a frame with no observation drew an **empty bar** -- and an empty bar
+  // means clean air. Playing a window across a gap therefore said "there is
+  // nothing here" in the register the audience reads fastest while the caption
+  // said the opposite, so an **anchored** window -- an episode, so many hours
+  // from a named moment -- was required to be blank-free end to end. That is
+  // what cut the CFC-11 episode to four hours: 183 is blank, so the window
+  // stopped at 182.
+  //
+  // A blank hour now draws struck out and captioned "no reading" (the section
+  // below), so crossing a gap is no longer a lie and playback runs through one.
+  // The anchored/unanchored split goes with it: what is left is one rule for
+  // every window on every deck, and it is about where playback comes to **rest**.
+  // `from`, every `holdAt` and `to` are frames the deck stops on and talks over,
+  // and a pause is a slide ending. Ending on a blank is no longer false, but it
+  // is still an ending with nothing in it, under a caption written about a
+  // reading.
+  //
+  // ⚠ A window may now be written across a gap, and one is: `record` crosses 93
+  // of them. Whether an *anchored* window should is a story decision per stop
+  // rather than a rule -- the CFC-11 deck's `dirty` deliberately stays inside its
+  // own run of readings -- so nothing here demands either.
   //
   // Gated on the data rather than on a fixture opinion: Ridge Hill is 696 of 696
   // observed, so the question genuinely does not arise and the section says so.
   {
     const blankFrames = obs.filter((v) => v == null).length;
     if (!blankFrames) {
-      skip('play windows land on real observations',
+      skip('play windows come to rest on real observations',
         `${obs.length} of ${obs.length} frames observed — no gap to land in`);
     } else {
       for (const s of slides) {
         if (!s.play) continue;
         const p = resolvePlay(s.play, { anchor: s.anchor, frames: FRAMES, nTime, stepHours });
-        // An **anchored** window is an episode: so many hours from a named
-        // moment, under a caption about that moment. It is claiming the hours
-        // are continuous, so every one of them has to be real.
-        //
-        // An **unanchored** one is a scan of the record -- absolute indices,
-        // "here is the whole fortnight" -- and on a record a third empty it
-        // *cannot* avoid gaps. Demanding it does would mean demanding the deck
-        // never show its own coverage, which is the wrong lesson: the gaps are a
-        // fact about the instrument and §3's third meter state is what makes
-        // them readable. What it must still get right is where it comes to
-        // rest, because a playback pausing on a blank frame stops with an empty
-        // bar under a caption naming an episode -- the same lie, held still.
-        //
-        // The split is on `s.anchor`, a structural fact about the stop, not on
-        // the site or on a fixture opinion.
-        if (s.anchor) {
-          const blank = [];
-          for (let t = p.from; t <= p.to; t++) if (obs[t] == null) blank.push(t);
-          check(`${s.actId}/${s.stopIndex}: every frame it plays has a reading`,
-            blank.length === 0,
-            blank.length
-              ? `${blank.length} blank at ${blank.slice(0, 6).join(',')}`
-              : `${p.from}..${p.to}, all observed, of ${blankFrames} gaps in the record`);
-        } else {
-          const rests = [p.from, ...p.holdAt, p.to];
-          const blank = rests.filter((t) => obs[t] == null);
-          const crossed = (() => {
-            let n = 0;
-            for (let t = p.from; t <= p.to; t++) if (obs[t] == null) n++;
-            return n;
-          })();
-          check(`${s.actId}/${s.stopIndex}: the scan stops only on real readings`,
-            blank.length === 0,
-            blank.length
-              ? `blank at ${blank.join(',')}`
-              : `rests at ${rests.join(',')}, crossing ${crossed} blank frames on the way`);
-        }
+        const rests = [p.from, ...p.holdAt, p.to];
+        const blank = rests.filter((t) => obs[t] == null);
+        let crossed = 0;
+        for (let t = p.from; t <= p.to; t++) if (obs[t] == null) crossed++;
+        check(`${s.actId}/${s.stopIndex}: it comes to rest on real readings`,
+          blank.length === 0,
+          blank.length
+            ? `blank at ${blank.join(',')}`
+            : `rests at ${rests.join(',')}, crossing ${crossed} blank frames on the way`);
       }
+    }
+  }
+
+  // ---- the bar's third state -----------------------------------------------
+  //
+  // An hour the instrument does not have is neither a hidden bar nor a low one,
+  // and since this landed the deck can say so: the track is hatched and the words
+  // "no reading" appear under it.
+  //
+  // ⚠ **A dead state would be invisible.** 307 of this deck's 672 frames have no
+  // reading and 341 of the HFC-23 deck's 1044 do; if the class stopped being set,
+  // or the stylesheet stopped acting on it, every one of those frames would go
+  // quietly back to drawing an empty bar -- which on these decks means clean air
+  // -- and nothing else on screen would look wrong. The two halves fail
+  // independently, so both are asserted: the stylesheet's here, read as text
+  // because there is no browser to ask, and the deck's on the mounted deck below.
+  //
+  // ⚠ **Colour is never the only channel, and grey least of all** -- on this bar
+  // grey *is* the empty track. So what is checked is that the state carries a
+  // texture and words, either of which survives colour-vision deficiency, a
+  // washed-out projector, or the back row of a hall.
+  //
+  // Gated on the data, like the section above. Ridge Hill can never reach the
+  // state, and demanding its stylesheet describe one would be demanding a rule
+  // for a picture that deck cannot draw. The rules are shared, so the two decks
+  // that can reach it are the two that check them.
+  console.log('\nthe bar\'s third state');
+  {
+    const blankFrames = obs.filter((v) => v == null).length;
+    if (!blankFrames) {
+      skip('the bar\'s third state',
+        `${obs.length} of ${obs.length} frames observed — it can never fire here`);
+    } else {
+      // ⚠ Reachable from the deck as it *runs*, not only by dragging the
+      // scrubber into a gap. This is the check that stops the CFC-11 episode
+      // being quietly trimmed back to a blank-free window: the whole point of
+      // the state is that a window may now cross one, so if every window is
+      // written to avoid gaps again, the state ships dead and this says so.
+      let crossed = 0;
+      for (const s of slides) {
+        if (!s.play) continue;
+        const p = resolvePlay(s.play, { anchor: s.anchor, frames: FRAMES, nTime, stepHours });
+        for (let t = p.from; t <= p.to; t++) if (obs[t] == null) crossed++;
+      }
+      check('a window actually plays through hours with no reading', crossed > 0,
+        `${crossed} blank frames inside play windows, of ${blankFrames} in the record`);
+
+      const css = readFileSync(new URL('../../css/story.css', import.meta.url), 'utf8')
+        // Comments first, or the prose about this very state parses as rules.
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+        .map(([, sel, body]) => ({ sel: sel.trim(), body }));
+      const marked = (part) => rules.filter((r) => r.sel.includes('.no-reading') && r.sel.includes(part));
+
+      // **Channel one: texture.** `background-image`, not `background-color` --
+      // a hue swap is precisely the thing that does not survive being
+      // colour-blind, and the empty track is already grey.
+      const hatch = marked('.meter-track');
+      check('the blank state hatches the track rather than only recolouring it',
+        hatch.some((r) => /background-image\s*:\s*repeating-linear-gradient/.test(r.body)),
+        hatch.map((r) => r.sel).join(' / ') || 'no .no-reading rule reaches .meter-track');
+
+      // **Channel two: words.** Held in the layout at all times and only made
+      // visible, so it can be read from the back of the room without the meter
+      // changing size when it appears.
+      const note = rules.filter((r) => r.sel.split(/\s+/).pop().startsWith('.meter-note'));
+      check('the words "no reading" have a rule that shows them',
+        marked('.meter-note').some((r) => /visibility\s*:\s*visible/.test(r.body)));
+      check('and one that hides them the rest of the time',
+        note.some((r) => r.sel === '.meter-note' && /visibility\s*:\s*hidden/.test(r.body)));
+      // ⚠ `visibility`, never `display`. The month act steps nine times a second
+      // across a record a third empty, so a note that took its space as it
+      // appeared would make the whole meter jump up and down for twenty seconds.
+      check('the note holds its place in the layout while it is not showing',
+        !note.some((r) => /display\s*:/.test(r.body)),
+        note.map((r) => r.sel).join(' / '));
     }
   }
 
@@ -2367,11 +2472,38 @@ async function runSite(site) {
       set(t, k, v) { t[k] = v; return true; },
     });
 
+    /**
+     * A real class list, not a no-op.
+     *
+     * It was four empty functions and a `contains` that answered false, which was
+     * fine while no class carried meaning. The meter's **third state** is a class
+     * the stylesheet acts on -- `.meter.no-reading` -- so a stub that swallowed it
+     * would leave the one state 307 of this deck's frames depend on unassertable
+     * here, which is the same as untested.
+     *
+     * `toggle(name, force)` takes the DOM's two-argument form, which is what both
+     * `paintMeter` and `enter` call it with; a one-argument stub would have made
+     * `toggle(c, false)` *add* the class.
+     */
+    const makeClassList = () => {
+      const set = new Set();
+      return {
+        add: (c) => set.add(c),
+        remove: (c) => set.delete(c),
+        toggle: (c, force) => {
+          const on = force === undefined ? !set.has(c) : !!force;
+          if (on) set.add(c); else set.delete(c);
+          return on;
+        },
+        contains: (c) => set.has(c),
+      };
+    };
+
     const el = (id) => ({
       id,
       textContent: '', innerHTML: '', hidden: false, value: '0', max: '0', title: '',
       style: new Proxy({}, { get: (t, k) => (k === 'setProperty' ? () => {} : t[k]), set: (t, k, v) => { t[k] = v; return true; } }),
-      classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+      classList: makeClassList(),
       addEventListener() {}, setAttribute() {}, appendChild() {}, remove() {},
       querySelector: () => el('q'), querySelectorAll: () => [],
       getContext: makeCtx,
@@ -2406,7 +2538,7 @@ async function runSite(site) {
     globalThis.document = {
       getElementById: byId,
       createElement: () => el('created'),
-      body: { classList: { add() {}, remove() {}, toggle() {}, contains: () => false } },
+      body: { classList: makeClassList() },
       documentElement: { requestFullscreen: () => Promise.resolve() },
     };
     globalThis.location = { search: '', protocol: 'http:' };
@@ -2635,6 +2767,300 @@ async function runSite(site) {
         }
         check('the chart stays down while the bar has the month',
           nodes.get('chartShell').hidden === true);
+
+        // ---- the third state, on the deck as it actually paints it ----------
+        //
+        // The stylesheet's half is checked further up and this is the deck's,
+        // because the two fail independently: a class nothing styles and a rule
+        // nothing sets look identical from the audience's seat.
+        //
+        // Done on `record` because it has no anchor, so retiming it moves the
+        // frame without rewriting any of the deck's moments -- and it is the act
+        // that plays the month across the gaps in the first place.
+        const blanks = [];
+        for (let t = 0; t < obs.length; t++) if (obs[t] == null) blanks.push(t);
+        if (!blanks.length) {
+          skip('the bar says when there is no reading',
+            `${obs.length} of ${obs.length} frames observed — the state cannot fire here`);
+        } else {
+          const note = nodes.get('meterNote');
+          deck.retime(blanks[0]);
+          check('a blank hour keeps the bar on screen rather than hiding it',
+            meter.hidden === false);
+          check('and marks it as an hour with no reading',
+            meter.classList.contains('no-reading') === true, `frame ${blanks[0]}`);
+          check('with no level left standing under the hatch',
+            bar.style.height === '0%', String(bar.style.height));
+          check('and says so in words, not only in the drawing',
+            note.textContent === 'no reading', `"${note.textContent}"`);
+
+          // ⚠ **The pair the state exists to keep apart**, and the reason an
+          // empty bar was never enough on its own: Gosan's quiet day draws a flat
+          // 0% because the air genuinely reads below the background, and a blank
+          // hour draws a flat 0% because there is nothing to draw. Identical
+          // height, opposite meanings -- so the hatch and the words are the only
+          // things telling them apart, and the clean day must not carry either.
+          deck.retime(FRAMES.clean);
+          check('an hour that truly reads background is not marked as missing',
+            meter.classList.contains('no-reading') === false,
+            `clean day at ${bar.style.height}`);
+
+          deck.retime(FRAMES.dirty);
+          check('the mark clears on an hour that has a reading',
+            meter.classList.contains('no-reading') === false);
+          check('and the level comes back with it',
+            Number.parseFloat(bar.style.height) > 0, String(bar.style.height));
+        }
+      }
+
+      // ---- the beacons, as the map actually paints them --------------------
+      //
+      // The five named regions the CFC-11 deck asks its audience to choose
+      // between. Everything here is gated on `meta.beacons`, so the other two
+      // decks skip it by arithmetic rather than by being told to -- which is
+      // also what holds Ridge Hill at 464.
+      //
+      // ⚠ **The mounted context swallows every call**, which is fine for
+      // checking that a slide can be entered and useless for checking what got
+      // drawn. So the map's context is swapped for a recorder that keeps the
+      // ordered call log with the graphics state at each call, and
+      // `_drawBeacons` is invoked directly against it. What is asserted is the
+      // arcs, widths, opacities and letters a projector would receive.
+      //
+      // The claim being defended is narrow and load-bearing: **the three states
+      // differ by more than their colour.** Three shades of one hue would read
+      // as one blob from the back of a room and as nothing at all to a reader
+      // with a colour-vision deficiency, and it is the easiest thing in this
+      // file to regress into, because it would still look fine on the machine
+      // it was written on.
+      if (!meta.beacons) {
+        skip('the beacons', 'no beacons in this export');
+      } else {
+        const map = deck.map;
+        const boxes = meta.beacons.boxes;
+
+        /**
+         * A canvas context that remembers. Tracks the state a real context
+         * carries -- fill, stroke, width, alpha, font, and the save/restore
+         * stack -- and stamps it onto every drawing call, since the state at the
+         * moment of the call is the whole question here.
+         */
+        const recorder = () => {
+          const log = [];
+          let st = { fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, font: '' };
+          const stack = [];
+          const push = (op, extra) => log.push({ op, ...st, ...extra });
+          const target = {
+            save: () => { stack.push({ ...st }); },
+            restore: () => { st = stack.pop() || st; },
+            beginPath: () => {},
+            arc: (x, y, r) => push('arc', { x, y, r }),
+            stroke: () => push('stroke', {}),
+            fill: () => push('fill', {}),
+            strokeRect: (x, y, w, h) => push('strokeRect', { x, y, w, h }),
+            fillText: (text, x, y) => push('fillText', { text, x, y }),
+            measureText: () => ({ width: 10 }),
+            setLineDash: (d) => push('dash', { dash: [...d] }),
+            // Enough of the rest of the 2D context for a whole `draw()` to run
+            // through this recorder rather than only `_drawBeacons` -- the ocean
+            // gradient and the raster blits are on that path, and a stub that
+            // returns undefined where a gradient belongs throws two lines in.
+            createLinearGradient: () => ({ addColorStop() {} }),
+            createRadialGradient: () => ({ addColorStop() {} }),
+            createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
+            getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+            log,
+          };
+          return new Proxy(target, {
+            get(t, k) {
+              if (k in t) return t[k];
+              if (k in st) return st[k];
+              return () => {};
+            },
+            set(t, k, v) {
+              if (k in st) st[k] = v; else t[k] = v;
+              return true;
+            },
+          });
+        };
+
+        // ⚠ **Nothing below may name a frame.** `cutPercentiles` on the site
+        // config is a tuning knob meant to be turned with the deck on screen,
+        // and turning it moves which beacon is in which state on which hour. A
+        // suite that hardcoded "C is high at 301" would fail on the next honest
+        // retune and teach whoever hit it that the checks are noise.
+        //
+        // So the frames are *found*: for each state, an hour where some beacon
+        // actually reads it. That is threshold-independent -- it asks only that
+        // the three states exist somewhere, which `verify_export.py` already
+        // requires -- and a state the cuts have tuned out of existence skips out
+        // loud rather than failing.
+        const rows = JSON.parse(readFileSync(`${site.dir}/series.json`, 'utf8')).beacons;
+        // A beacon that reaches all three states, and one frame of each.
+        let subject = -1;
+        let atState = [];
+        for (let k = 0; k < rows.length; k++) {
+          const found = [0, 1, 2].map((s) => rows[k].indexOf(s));
+          if (found.every((t) => t >= 0)) { subject = k; atState = found; break; }
+        }
+
+        // Draw one frame's beacons and hand back the log.
+        const paintAt = (t) => {
+          const rec = recorder();
+          const was = map.ctx;
+          map.ctx = rec;
+          map.t = t;
+          try { map._drawBeacons(1); } finally { map.ctx = was; }
+          return rec.log;
+        };
+
+        check('the map picked the beacons up', map.beacons.length === boxes.length,
+          `${map.beacons.length} of ${boxes.length}`);
+
+        // The levels the map reads must be the levels the export shipped. This
+        // is the join between `series.beacons` and what is on screen, and it is
+        // an off-by-one away from lighting the right letter on the wrong hour.
+        {
+          const t = Math.min(meta.beacons.nTime - 1, 287);
+          const got = map.beaconLevel(t);
+          const want = boxes.map((_, k) => rows[k][t]);
+          check('the levels it reads are the levels the export wrote',
+            got.join('') === want.join(''), `${got.join('')} vs ${want.join('')}`);
+        }
+
+        const letters = (log) => log.filter((e) => e.op === 'fillText').map((e) => e.text);
+        const markOf = (log, k) => {
+          const arcs = log.filter((e) => e.op === 'arc');
+          const at = arcs[k];
+          const i = log.indexOf(at);
+          const after = log.slice(i + 1, i + 5);
+          return {
+            r: at.r,
+            ring: Math.min(...after.filter((e) => e.op === 'stroke').map((e) => e.lineWidth)),
+            fill: (after.find((e) => e.op === 'fill') || {}).globalAlpha,
+          };
+        };
+        if (subject < 0) {
+          skip('the three states differ by more than colour',
+            'no beacon reaches all three states at the current cuts');
+        } else {
+          const id = boxes[subject].id;
+          const [tDark, tLit, tHigh] = atState;
+          const at = atState.map((t) => markOf(paintAt(t), subject));
+          const [mDark, mLit, mHigh] = at;
+
+          // The three channels the states ride on, walked one beacon at a time
+          // so nothing but its own state changes between the readings.
+          check(`${id} grows as it lights`, mHigh.r > mDark.r,
+            `r ${mDark.r} -> ${mLit.r} -> ${mHigh.r} at frames ${tDark}/${tLit}/${tHigh}`);
+          check('and is ringed more heavily', mHigh.ring > mLit.ring && mLit.ring > mDark.ring,
+            `${mDark.ring} -> ${mLit.ring} -> ${mHigh.ring}`);
+          check('and filled more solidly', mHigh.fill > mLit.fill && mLit.fill > mDark.fill,
+            `${mDark.fill} -> ${mLit.fill} -> ${mHigh.fill}`);
+          // The one that matters most, stated as the deck's own rule: take the
+          // colour away entirely and the three states still read as three.
+          check('so all three states survive with the colour taken away',
+            new Set(at.map((m) => `${m.r}/${m.ring}`)).size === 3,
+            at.map((m) => `${m.r}/${m.ring}`).join(' '));
+        }
+
+        // A handful of frames spread across the record, so the checks below see
+        // whatever mix of states the cuts happen to produce.
+        const spread = [0, 1, 2, 3].map((i) => Math.floor((i * (rows[0].length - 1)) / 3));
+        const logs = spread.map(paintAt);
+
+        for (const [i, log] of logs.entries()) {
+          check(`every beacon is named on screen at frame ${spread[i]}`,
+            letters(log).join('') === boxes.map((b) => b.id).join(''),
+            letters(log).join(''));
+        }
+
+        // ⚠ **Identity is not the state channel.** The letters are drawn at full
+        // strength whatever a beacon is doing, so a reader who separates none of
+        // the five hues still reads which letters are lit.
+        check('the letters never fade with the state',
+          logs.flat().filter((e) => e.op === 'fillText').every((e) => e.globalAlpha === 1));
+
+        // Each beacon draws its region, not only its city. A dot alone would
+        // claim a point source on the one deck that has none.
+        check('each beacon draws the region it stands for',
+          logs.every((log) => log.filter((e) => e.op === 'strokeRect').length === boxes.length));
+
+        // ⚠ **`meta.beacons` carries `r` and `sepPpx` -- the answer to the
+        // question act 5 asks the audience.** Nothing drawn may leak them, and
+        // nothing drawn may name the regions either: "Shandong" on screen during
+        // the game is the reveal, three acts early.
+        const drawn = logs.flat().filter((e) => e.op === 'fillText').map((e) => String(e.text));
+        check('nothing on the map gives the answer away',
+          drawn.every((s) => /^[A-E]$/.test(s)), [...new Set(drawn)].join(''));
+
+        // The letter has to stay readable on all fifteen hue-and-state pairs.
+        // One colour for every fill is wrong for at least one of them, and which
+        // one is not predictable from the hex -- hence `_beaconInk`.
+        //
+        // ⚠ **The floor is 4:1, deliberately below the 4.5:1 these actually
+        // reach.** The beacon hues are meant to be swapped by eye, and a check
+        // pinned to what today's five happen to measure would turn every colour
+        // change into a test failure. What it is here to catch is a hue landing
+        // in the mid-luminance band where *neither* ink works -- a letter nobody
+        // can read -- and not a hue that is merely a little worse than the last
+        // one. The measured worst is printed so the drift is visible either way.
+        {
+          const lin = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+          const relL = (hex) => {
+            const n = parseInt(hex.slice(1), 16);
+            return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+          };
+          const blend = (hex, a) => {
+            const n = parseInt(hex.slice(1), 16);
+            const s = [252, 252, 251];
+            const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) => Math.round(v * a + s[i] * (1 - a)));
+            return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+          };
+          const ratio = (x, y) => {
+            const [hi, lo] = relL(x) > relL(y) ? [relL(x), relL(y)] : [relL(y), relL(x)];
+            return (hi + 0.05) / (lo + 0.05);
+          };
+          const { BEACON_COLOURS } = await import('../palette.js');
+          const worst = [];
+          for (const hue of BEACON_COLOURS) {
+            for (const a of [0.10, 0.55, 0.92]) {
+              const bg = blend(hue, a);
+              worst.push(ratio(map._beaconInk(hue, a), bg));
+            }
+          }
+          check('the letter stays legible on every hue in every state',
+            Math.min(...worst) >= 4.0, `worst ${Math.min(...worst).toFixed(1)}:1`);
+        }
+
+        // Wiring: the layer switch is what the beats file actually sets, so a
+        // `_drawBeacons` nothing calls would pass every check above.
+        {
+          const rec = recorder();
+          const was = map.ctx;
+          const had = map.layers.beacons;
+          map.ctx = rec;
+          map.layers.beacons = 0;
+          try { map.draw(); } finally { map.layers.beacons = had; map.ctx = was; }
+          check('the layer switch turns them off',
+            !rec.log.some((e) => e.op === 'fillText' && /^[A-E]$/.test(String(e.text))));
+        }
+
+        // ⚠ **A layer no stop draws ships dead**, and nothing else on screen
+        // would look wrong. This is the check that stops that happening.
+        const beaconStops = slides.filter((s) => s.layers.beacons > 0);
+        check('some stop actually draws them', beaconStops.length > 0,
+          `${beaconStops.length} stops`);
+        // ⚠ B's box reaches lon 136.0, outside both wind framings. A stop that
+        // asks "which of these five" while one of them is off the edge of the
+        // screen is asking about four.
+        for (const s of beaconStops) {
+          const west = s.camera.lon - s.camera.span / 2;
+          const east = s.camera.lon + s.camera.span / 2;
+          const out = boxes.filter((b) => b.lon[0] < west || b.lon[1] > east);
+          check(`${s.actId}/${s.stopIndex}: all five regions are on screen`,
+            out.length === 0, out.map((b) => b.id).join(','));
+        }
       }
     }
   }

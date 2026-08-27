@@ -35,8 +35,8 @@
  *
  * **3. The clean day is *after* the dirty one.** This is the big break with
  * `beats-gsn.js`, where the quiet day falls six days before the episode and the
- * deck says so out loud. Here dirty is 16 June and clean is 5 July, nineteen
- * days later, so **no caption in this file may claim a chronology** -- and the
+ * deck says so out loud. Here dirty is 26 June and clean is 5 July, nine days
+ * later, so **no caption in this file may claim a chronology** -- and the
  * acts still run clean-first, which means the date stamp on screen goes
  * *backwards* between `clean-smell` and `dirty`. It is survivable in a scaffold
  * and it is not shippable. Whoever writes the real deck either reorders the acts
@@ -53,10 +53,17 @@
  * **Chosen by the user to get something on screen**, not by Brief 1's analysis.
  * Both were re-derived and then read off the shipped data:
  *
- *   dirty  180 -- 2016-06-16 00:00 UTC, 16 Jun 09:00 KST. Reads 276.4, which is
- *                 **+45.3 above the background** -- two thirds of the bar, and
- *                 well inside a run of observed frames (178..182).
- *   clean  379 -- 2016-07-05 14:00 UTC, 5 Jul 23:00 KST. Reads 234.5, **+3.4**:
+ *   dirty  301 -- 2016-06-26 02:00 UTC, Sunday 26 Jun 11:00 KST. Reads 275.5,
+ *                 which is **+43.2 above the background** -- about two thirds of
+ *                 the bar (64%), and the *first* frame of the observed run
+ *                 301..306. Chosen by the user. It replaced frame 180 (16 Jun
+ *                 09:00 KST, 276.4, +44.1), which reads within 0.9 ppt of it and
+ *                 sat mid-run instead; the reason to prefer this one is the run
+ *                 behind it, not the reading on it. 298..300 are blank, so the
+ *                 anchor opens its run rather than sitting inside it, and the
+ *                 six observed frames that follow are what the `dirty` playback
+ *                 is now cut to.
+ *   clean  379 -- 2016-07-05 14:00 UTC, 5 Jul 23:00 KST. Reads 234.5, **+2.2**:
  *                 a sliver rather than empty, so the bar is visibly alive and
  *                 visibly near the floor. **Observed at 379 and nowhere either
  *                 side of it** -- 378 and 380 are both blank, which is why no
@@ -65,47 +72,71 @@
  * Both carry a reading, which was worth checking: only 365 of the 672 frames
  * do, so a 46% chance of anchoring a caption on an empty bar.
  *
- * ⚠ **Neither is the record.** The smelliest frame is 2016-06-24 22:00 at
- * +65.5, the cleanest 2016-07-06 08:00 at −1.5. Brief 1 owns the real choice,
- * including whether the smelliest frame is an episode or a two-hour spike --
- * the HFC-23 deck was bitten by exactly that.
+ * ⚠ **Neither is the record.** The smelliest frame is 287 -- 2016-06-24 22:00
+ * UTC, 25 Jun 07:00 KST -- at **+64.3**, and the cleanest is 388 at **−2.7**.
+ * Brief 1 owns the real choice.
+ *
+ * Since dirty moved to 301 those two are the same weekend: 287 is **28 hours
+ * before** the anchor, and 296..306 -- broken by blanks at 298..300 -- is the
+ * back half of the episode it tops. So the deck now anchors on the decline of
+ * the record event rather than on a separate day, which is worth knowing before
+ * anyone writes a caption about what the reading is *doing*: it has already
+ * peaked off-screen.
+ *
+ * The doc's open question about frame 287 -- episode or two-hour spike, the
+ * thing that bit the HFC-23 deck -- is half answered: it sits inside a
+ * **12-frame observed run (283..294, a full 24 hours)**, so unlike the HFC-23
+ * record maximum it is not an isolated reading between blanks. Whether the
+ * *values* across that run hold up is Brief 1's to measure before anything
+ * anchors there.
  *
  * There is deliberately **no `peak`**. `beats-gsn.js` has one because its
  * episode plateaus over 22 hours and the playback wants somewhere to pause;
  * nothing here has been measured well enough to name a peak, and inventing one
  * would put a pause on a frame no one has looked at.
  */
-const FRAMES = { clean: 379, dirty: 180 };
+const FRAMES = { clean: 379, dirty: 301, beacon_B: 32, beacon_AB : 535, beacon_C: 288, beacon_Calt: 504, beacon_CD: 180, beacon_D: 310, beacon_E: 223};
 
 /**
  * The smell bar's scale, above a fixed floor.
  *
- * `base` is the export's own background (231.106) rounded down to 231.1, the
- * same rule Ridge Hill's 1930 and Gosan's 29.6 follow. Rounded *down* rather
- * than to nearest: the background is a 10th percentile, so a tenth of the
- * readings sit at or below it by construction, and rounding up would push more
- * of them onto a floor that reads as "nothing here".
+ * `base` is the **10th percentile of the observations alone** (232.387) rounded
+ * down to 232.3. Rounded *down* rather than to nearest: a 10th percentile means
+ * a tenth of the readings sit at or below it by construction, and rounding up
+ * would push more of them onto a floor that reads as "nothing here".
  *
- * ⚠ **It was 232.3, and the emissions map is what moved it.** With no map the
- * export had nothing to model with, so the background was the 10th percentile
- * of the readings themselves; with one it is the 10th percentile of *reading
- * minus modelled*, which is the same convention Ridge Hill has always used. The
- * prior explains about 1.3 of the reading, so the floor drops by that much and
- * every frame reads correspondingly fuller. The bar itself is unchanged -- it
- * still draws the raw reading above this floor, and does not subtract the
- * model.
+ * ⚠ **It must not be read off `series.json`'s `baseline`, and this is the one
+ * thing to know about these two numbers.** That field changes meaning depending
+ * on whether the site has an emissions map: with none it is the 10th percentile
+ * of the readings, with one it is the 10th percentile of *reading minus
+ * modelled*. This site acquired a map, so it moved 232.387 -> 230.926, and the
+ * bar was briefly re-cut to follow it. That was wrong, twice over:
  *
- * `span` 69 comes from the record rather than from the story -- it puts the
- * strongest frame (296.64, or +65.5 over the new floor) at **exactly 95%** of
- * the bar with **nothing clipping**, which is how both other decks settled
+ *   1. **The bar draws the raw reading**, not the residual. Its floor is a
+ *      statement about what clean air at Gosan measures, which is a property of
+ *      the instrument record and of nothing else.
+ *   2. **The map here is a guess.** It is population, not an inventory -- that
+ *      absence is the deck's whole argument, and the guess is barely better than
+ *      knowing nothing (r +0.68 against land-fraction's +0.63). Letting it slide
+ *      the floor under the reading would mean the audience's bar moved because
+ *      *we* changed our minds, on a deck about measurement.
+ *
+ * So this is invariant to the flux file. Swapping the misregistered 2002
+ * population prior for the 2016 rebuild moved the export's background by
+ * 1.46 ppt and moved these two numbers not at all, which is the check that they
+ * are cut from the right quantity.
+ *
+ * `span` 68 comes from the record rather than from the story -- it puts the
+ * strongest frame (296.64 at frame 287, or +64.34 over the floor) at **94.6%**
+ * of the bar with **nothing clipping**, which is how both other decks settled
  * theirs.
  *
- * What that leaves the two anchors: the dirty day reads about **66%** and the
- * clean day about **5%** -- a sliver, not the flat empty the HFC-23 deck's quiet
+ * What that leaves the two anchors: the dirty day reads about **65%** and the
+ * clean day about **3%** -- a sliver, not the flat empty the HFC-23 deck's quiet
  * day gives. That is the honest picture of a day that is nearly, but not quite,
  * background.
  */
-const SMELL = { base: 231.1, span: 69 };
+const SMELL = { base: 232.3, span: 68 };
 
 /**
  * Where the two back-trajectory fans start from.
@@ -162,7 +193,7 @@ const RELEASES = {
  * would hand the audience the reveal two acts early. The delta is the largest
  * population mass in the view and gives away nothing.
  */
-const DOMAIN = { lon: 125.09, lat: 34.01, span: 30 };
+const DOMAIN = { lon: 123.09, lat: 34.01, span: 30 };
 const JEJU = { lon: 126.16, lat: 33.29, span: 3 };
 const CLIFF = { lon: 126.16, lat: 33.29, span: 1.2 };
 const OCEAN = { lon: 122.5, lat: 29.5, span: 18 };
@@ -203,7 +234,11 @@ export const DECK = {
  * clear of the banned list, which the suite checks, but that is a floor rather
  * than a standard. None of them makes the argument the status doc is for.
  */
-function acts() {
+// `f` is the deck's resolved frames, which `buildDeck` passes in and which a URL
+// or a saved session may have moved. Every act here reads its moment through
+// `anchor:` and does not need it; the one exception is the beacons act's second
+// stop, which names a specific measured hour with an explicit `t`.
+function acts(f) {
   return [
     {
       id: 'where',
@@ -374,18 +409,119 @@ function acts() {
           layers: { footprint: 1 },
         },
         {
-          // ⚠ **Four hours, where `beats-gsn.js` plays twelve.** Not a feel
-          // decision: 180..182 is the whole run of consecutive *observed* frames
-          // from the dirty hour -- 183 is blank, and a blank frame draws an
-          // empty bar, which on this deck means clean air. Twelve hours would
-          // play three lies at the end of a slide captioned about an episode.
-          //
-          // No `holdAt`: this deck names no peak, and a pause has to land on a
-          // frame someone has looked at.
-          caption: 'And the reading climbs. Something out there is leaking.',
+          /**
+           * **Ten hours: 301..306, and it stops where the data does.**
+           *
+           * Six frames, Sunday 26 June 11am to 9pm KST, and **every one of them
+           * carries a reading**. 307 (11pm) is the first blank after the anchor,
+           * so this window is the whole observed run and not a frame more. Asked
+           * for directly, and it is also the honest length: the run is bounded
+           * by blanks at both ends (298..300 before it, 307..309 after), so
+           * there is nothing to show past 9pm that is not a gap.
+           *
+           * That makes the window independent of how the bar draws a missing
+           * hour. The previous one (180..188, sixteen hours) deliberately ran
+           * *through* a gap and leant on the bar's third state -- a blank hour
+           * struck out and captioned "no reading" rather than drawn empty -- to
+           * keep five of its nine frames from reading as clean air. Nothing here
+           * needs that. If the third state ever regresses, this slide does not
+           * start lying; it is the `record` act that would.
+           *
+           * ⚠ **The bar falls across this window**, and no caption may say
+           * otherwise: 64% at 11am, then 45, 34, 43, 39, and 27% at 9pm. The
+           * anchor is the high point of its own run -- the day arrives dirty
+           * rather than building on screen. (The record maximum is elsewhere
+           * entirely, frame 287, and this deck still names no peak, so there is
+           * no `holdAt`.)
+           *
+           * ⚠ Clear of the 27 Jun → 1 Jul join at frame 324: the window ends 18
+           * frames short of it. Closer than the old window's 136, and still not
+           * crossing, which is the only thing that matters -- see the header.
+           */
+          caption: 'The reading is high. Something out there is leaking.',
           camera: CHINA,
           layers: { footprint: 1 },
-          play: { from: 0, to: 4, stepsPerSec: 6 },
+          /** play: { from: 0, to: 10, stepsPerSec: 6 }, */
+        },
+      ],
+    },
+
+    {
+      id: 'beacons',
+      title: 'Five places',
+      anchor: 'clean',
+      // The status doc's `beacons` beat -- *the five, named, all dark* -- and the
+      // first thing in this deck that draws them. The `game` act after it is
+      // Brief 4's and is not here.
+      //
+      // ⚠ **This act exists so the layer cannot ship dead.** Brief 3 is the
+      // drawing path, and a state channel nothing on screen exercises is a state
+      // channel that regresses silently -- the exact failure the meter's third
+      // state was built around. Between the two stops the map draws every state
+      // the layer has: five dark, then three at high.
+      //
+      // ⚠ **`DOMAIN`, and it has to be.** B's box reaches lon 136.0, outside
+      // both `CHINA` (111..131) and `OCEAN` (113.5..131.5) -- those framings show
+      // B's mark on Fukuoka but cut its region off at the screen edge. `DOMAIN`
+      // (110.09..140.09) is the only camera in this deck that holds all five
+      // boxes whole. It carries no wind, which is fine: this act is about the
+      // smelling area, and the wind acts are behind it.
+      //
+      // The footprint is on under both stops on purpose. A beacon says *the
+      // station can smell that direction today*, and with the plume drawn
+      // underneath the audience can see why it says so -- which is what makes
+      // act 5 a game they can play rather than a light show they watch.
+      stops: [
+        {
+          // ✏️ Placeholder, like every caption in this file. The job: name the
+          // five as *places* and hand the question to the room.
+          //
+          // Measured, not assumed: at frame 379 all five beacons read 0. So the
+          // caption may say the map is dark, and this is the only act that can
+          // say it -- 88 of 672 frames are all-dark and the quiet day is one.
+          caption: 'Five regions. Which one is emitting?',
+          camera: DOMAIN,
+          layers: { footprint: 1, beacons: 1, graticule: 1 },
+        },
+        {
+          // ✏️ Placeholder. It must not name Shandong or hint which letter
+          // matters -- that is the answer to act 5, and `meta.beacons` carries
+          // the correlations that give it away. Nothing on screen reads them.
+          //
+          // ⚠ **An explicit `t`, so this stop does not follow the anchor.** The
+          // act is anchored on the quiet day and this stop is the dirty one --
+          // 301, where C, D and E all read 2 and A and B read 0. Retiming the
+          // act drags the first stop and deliberately leaves this one, because
+          // what it is for is the *contrast* with the stop before it, and an
+          // hour chosen by dragging would not reliably have a beacon lit at all.
+          caption: 'Region B',
+          camera: DOMAIN,
+          t: f.beacon_B,
+          layers: { footprint: 1, beacons: 1, graticule: 1 },
+        },
+        {
+         caption: 'Region A+B',
+          camera: DOMAIN,
+          t: f.beacon_AB,
+          layers: { footprint: 1, beacons: 1, graticule: 1 },
+        },
+        {
+         caption: 'Region C',
+          camera: DOMAIN,
+          t: f.beacon_C,
+          layers: { footprint: 1, beacons: 1, graticule: 1 },
+        },
+        {
+         caption: 'Region D',
+          camera: DOMAIN,
+          t: f.beacon_D,
+          layers: { footprint: 1, beacons: 1, graticule: 1 },
+        },
+        {
+         caption: 'Region E',
+          camera: DOMAIN,
+          t: f.beacon_E,
+          layers: { footprint: 1, beacons: 1, graticule: 1 },
         },
       ],
     },
@@ -402,9 +538,17 @@ function acts() {
           layers: { footprint: 1 },
           /**
            * Absolute frame indices -- an act with no anchor reads them as
-           * frames, not hours. 180..379 runs from the dirty day to the clean
-           * one, so the playback holds both of the deck's moments and comes to
-           * rest on each, and both of those frames carry a reading.
+           * frames, not hours. 180..379 is three weeks of air ending on the
+           * clean day, and `holdAt` names both moments, so the playback still
+           * pauses on the dirty hour (301, inside the window) and comes to rest
+           * on the clean one. All three of `from`, the two holds and `to` carry
+           * a reading.
+           *
+           * ⚠ 180 is **no longer an anchor** -- it was the dirty frame until
+           * that moved to 301, and it is kept only as the start of three weeks.
+           * It is 16 Jun 09:00 KST, it is observed, and nothing on screen points
+           * at it. Move it freely; anchoring the window on 301 instead would cut
+           * the act to 78 frames and the caption says "three weeks".
            *
            * 200 frames at 9 a second is about twenty-two seconds, in the same
            * range as the other two decks' month acts.
@@ -419,11 +563,12 @@ function acts() {
            * The shipped HFC-23 deck has the same bug at the same join, and Brief
            * 5 is where the suite learns to catch it for all three decks.
            *
-           * ⚠ **About a third of these frames have no reading**, which the bar
-           * draws as empty -- meaning, on this deck, clean air. Same hazard as
-           * the HFC-23 deck's `record` act, same fix (§3's third meter state).
-           * The stops it comes to rest on are all observed, which is what the
-           * suite asserts and the most that can be promised today.
+           * **About a third of these frames have no reading**, and the bar now
+           * says so: §3's third meter state landed, so a blank hour draws struck
+           * out and captioned rather than empty. What the suite still asserts is
+           * where the playback comes to *rest* -- `from`, every `holdAt` and
+           * `to` are observed frames -- because a pause is a slide ending and
+           * ought to end on something the caption can be about.
            */
           play: { from: 180, to: 379, stepsPerSec: 9, holdAt: ['dirty', 'clean'] },
         },

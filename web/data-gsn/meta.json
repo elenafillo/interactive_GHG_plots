@@ -56,7 +56,7 @@
     "logMax": 0.5813210815735071,
     "logDisplayMax": -0.9636780152320632,
     "nTime": 1044,
-    "sizeMB": 5.54
+    "sizeMB": 5.53
   },
   "flux": null,
   "fluxHires": {
@@ -309,6 +309,7 @@
       ]
     ]
   },
+  "beacons": null,
   "wind": null,
   "series": {
     "species": [
@@ -335,6 +336,7 @@
     ],
     "defaultSpecies": "hfc-23",
     "hasLandFrac": true,
+    "hasBeacons": false,
     "nTime": 1044
   },
   "timeStepHours": 2

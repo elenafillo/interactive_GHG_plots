@@ -53,6 +53,11 @@ if (location.protocol === 'file:') {
     <span class="meter-label">a lot</span>
     <span class="meter-track"><i id="meterFill"></i></span>
     <span class="meter-label">a little</span>
+    <!-- The bar's third state: this hour has no observation, which is neither a
+         low reading nor a hidden bar. Always in the layout and only made visible
+         when it applies -- see `.meter-note` in story.css. Ridge Hill is 696 of
+         696 observed, so this deck never reaches it -- the markup is shared. -->
+    <span class="meter-note" id="meterNote">no reading</span>
     <span class="meter-num" id="meterNum"></span>
   </div>
 
@@ -81,8 +86,6 @@ if (location.protocol === 'file:') {
     <input id="scrubRange" type="range" min="0" max="0" value="0" step="1"
            aria-label="Move this slide's moment">
     <span class="scrub-time" id="scrubTime">—</span>
-    <span class="scrub-anchor" id="scrubAnchor">—</span>
-    <button id="copyFrames">copy frames</button>
     <button id="clearFrames">reset</button>
     <span class="scrub-help">[ ] nudge ±1h · shift ±6h · G squares/smooth</span>
 

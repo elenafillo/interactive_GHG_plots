@@ -46,7 +46,7 @@
     "logMax": 0.35309458658100523,
     "logDisplayMax": -1.1106973087787537,
     "nTime": 696,
-    "sizeMB": 1.51
+    "sizeMB": 1.5
   },
   "flux": {
     "logMin": -11.5,
@@ -57,6 +57,7 @@
   "fluxHires": {
     "logMin": -11.5,
     "logMax": -7.0,
+    "species": "ch4",
     "year": 2021,
     "source": "EDGAR v7.0_FT2021, 0.1 x 0.1 deg, summed from sector grids",
     "ungroupedSectors": [
@@ -124,6 +125,7 @@
     }
   },
   "factories": null,
+  "beacons": null,
   "wind": {
     "atlas": {
       "u": "wind_u.png",
@@ -174,6 +176,7 @@
     ],
     "defaultSpecies": "ch4",
     "hasLandFrac": true,
+    "hasBeacons": false,
     "nTime": 696
   },
   "timeStepHours": 1

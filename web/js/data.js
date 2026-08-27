@@ -158,6 +158,15 @@ export async function loadData(base = 'data-rgl/', onProgress = () => {}, want =
     // questions, and they were true at different times.
     wind,
 
+    // The named regions the CFC-11 deck asks its audience to choose between,
+    // and their 0/1/2 level per frame -- or null at every other site, which is
+    // every other site. Optional the whole way down like `factories`: the two
+    // halves live in different files and either could be absent, so they are
+    // surfaced as one thing that is there or is not, and a caller that wants
+    // them checks `has.beacons` rather than assuming the key exists.
+    beacons: meta.beacons || null,
+    beaconLevels: series.beacons || null,
+
     speciesKeys: keys,
     speciesList: meta.species || keys.map((k) => ({ key: k, ...blocks[k] })),
 
@@ -193,6 +202,8 @@ export async function loadData(base = 'data-rgl/', onProgress = () => {}, want =
         wind: !!wind,
         manySpecies: keys.length > 1,
         factories: !!(meta.factories && meta.factories.points && meta.factories.points.length),
+        beacons: !!(meta.beacons && meta.beacons.boxes && meta.beacons.boxes.length
+                    && series.beacons && series.beacons.length === meta.beacons.boxes.length),
       };
     },
 

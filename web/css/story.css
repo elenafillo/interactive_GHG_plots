@@ -188,6 +188,49 @@ body.with-chart { --chart-h: clamp(150px, 24vh, 240px); }
 .meter-num { font-size: 13px; color: var(--ink2); font-variant-numeric: tabular-nums; display: none; }
 body.show-number .meter-num { display: inline; }
 
+/* ---- the bar's third state: an hour with no reading --------------------- */
+
+/* **Empty and missing are different claims, and the bar has to be able to make
+   both.** 46% of the Gosan record carries no observation, and a bar that simply
+   sat at zero through those hours would be saying "clean air" -- the one thing
+   this deck exists to disprove -- in the register the audience reads fastest.
+   So a blank hour has its own state, and playback runs straight through it.
+
+   ⚠ **Announced in two channels, neither of which is colour.** The track is
+   hatched with diagonal lines -- the cartographer's "no data", a texture rather
+   than a hue -- and the words "no reading" appear beneath it. Colour-vision
+   deficiency, a projector with its contrast crushed and the back row of a hall
+   each take out a different channel, and either survivor carries the meaning.
+   Grey alone would not: on this bar grey *is* the empty track. */
+
+/* ⚠ The note is always in the layout and only its `visibility` moves. The month
+   act steps at nine frames a second across a record a third empty, so a note
+   that took its space as it appeared would make the whole meter jump up and
+   down for twenty seconds. Same reason `paintMeter` writes the words every
+   paint rather than clearing them. */
+.meter-note {
+  font-size: 12px;
+  color: var(--ink2);
+  white-space: nowrap;
+  visibility: hidden;
+}
+.meter.no-reading .meter-note { visibility: visible; }
+
+/* The hatch, over the whole track. `paintMeter` drives the fill to zero in this
+   state, so there is no level underneath it to misread -- what is on screen is
+   a struck-out track and a caption for it, not a quantity. */
+.meter.no-reading .meter-track {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--muted) 0 1.5px,
+    transparent 1.5px 5px
+  );
+}
+
+/* "a lot" and "a little" are labelling a scale that is not measuring anything
+   this hour, so they step back rather than reading as live. */
+.meter.no-reading .meter-label { opacity: 0.45; }
+
 /* ---- chart ------------------------------------------------------------- */
 
 .chart-shell {
@@ -331,8 +374,31 @@ body.show-number .meter-num { display: inline; }
   max-width: 420px;
   accent-color: var(--obs);
 }
-.scrub-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.scrub-anchor { color: var(--muted); white-space: nowrap; }
+/* Fixed, not sized by its contents. `friendly()` says the hour as a word, so the
+   clock runs from "Friday 1 May, 1am" to "Wednesday 10 September, midnight" --
+   and every character of that swing used to come out of the slider next to it,
+   because the range above is the item that grows. The track resized and the
+   thumb moved on every tick, so a presenter dragging to a moment was aiming at
+   a target that shifts as it is hit.
+
+   32ch is the longest string the formatter can produce, one `ch` per character:
+   longest day (Wednesday), two digits, longest month (September), ", ", longest
+   hour (midnight). Generous by design -- measured in the faces `--sans` resolves
+   to, it wants 29.8ch (Segoe UI), 29.4 (Tahoma), 28.9 (Verdana) -- and the slack
+   is the margin for whatever system-ui is on the machine it is opened on. If one
+   ever overruns it the text spills into the gap rather than moving the slider,
+   which is the failure worth having.
+
+   tabular-nums holds the day of the month at exactly 2ch. `flex: none` keeps the
+   box out of the row's negotiation in *both* directions, so a cramped panel
+   shrinks the slider (`min-width: 0`) and never this. */
+.scrub-time {
+  flex: none;
+  width: 32ch;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .scrub-help { color: var(--muted); white-space: nowrap; }
 
 /* Contrast knobs for the sources card, on their own line under the scrubber.
@@ -380,7 +446,7 @@ body.show-number .meter-num { display: inline; }
 @media (max-width: 720px) {
   .hud { max-width: none; right: var(--gutter); }
   .caption { font-size: 20px; }
-  .scrub-help, .scrub-anchor { display: none; }
+  .scrub-help { display: none; }
   /* No split worth having at this width: 44% of a phone is not a panel, and
      the caption is full-bleed here anyway. The panel takes the whole row and
      stacks. It keeps the raised `bottom` -- the stamp is still in the corner

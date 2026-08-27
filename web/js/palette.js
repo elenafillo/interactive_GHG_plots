@@ -136,6 +136,50 @@ const FOSSIL_RAMP = [
   '#e0e1e2', '#bcbfc3', '#94989f', '#6d727b', '#4c515a', '#31353d', '#1a1d23',
 ];
 
+/**
+ * The CFC-11 deck's five beacons, in letter order A..E.
+ *
+ * One hue each, because these are five *places* the audience is asked to choose
+ * between and a shared colour would make them one category with five labels.
+ * Identity is not carried by colour alone in any case -- each beacon draws its
+ * own letter, always, and the letter never changes.
+ *
+ * **Colour here is identity, never state.** The three states -- dark, lit, high
+ * -- are carried by fill opacity, ring weight and radius within a beacon's own
+ * hue, so a reader who cannot separate the five hues at all still sees which
+ * ones are lit. That is the deck's rule and this is the one place it could most
+ * easily have been broken.
+ *
+ * ⚠ **Unmeasured, unlike every other entry in this file.** Chosen by name at the
+ * user's direction -- brown, orange, blue, green, pink -- and none of the
+ * all-pairs CVD work above has been done on them. Two pairings to look at on
+ * screen before the night, both against the plume they sit on top of:
+ *
+ *   - **B's orange against the footprint ramp**, which is the orange family.
+ *     This is the beacon most likely to disappear exactly when it lights, since
+ *     a lit beacon is by definition one with plume underneath it. Pushed toward
+ *     amber to open the gap, and the three-pass stroke in `_drawBeacons` is what
+ *     actually carries it.
+ *   - **A's brown against the plume's dark end** (#6e2409), same reason, at the
+ *     other end of the ramp.
+ *
+ * Green, pink and charcoal are the source families' hues and blue is the
+ * observed series -- all four are free here, because this deck has no source
+ * card and draws no chart on the beacon stops.
+ *
+ * **These are meant to be swapped.** `_beaconInk` in the story fork's mapview
+ * chooses each letter's ink from the fill it actually lands on, so a new hue
+ * cannot make a letter unreadable by surprise, and the suite's floor on that is
+ * deliberately loose. Change a hex here and nothing else needs touching.
+ *
+ * The one thing worth knowing before you do: a fill in the **mid-luminance band**
+ * clears 4.5:1 against neither black nor white -- there is a real dead zone
+ * between them. C's blue started at #1f6ec4, which landed in it at the solid
+ * state (4.4:1 whichever ink it was given); #1857a3 clears 5.8:1. Worst pairing
+ * across all five hues and all three states today is 5.5:1, on the green.
+ */
+export const BEACON_COLOURS = ['#7a4a2b', '#e07a1f', '#1857a3', '#2f8f4e', '#d2529a'];
+
 function hexToRgb(h) {
   const n = parseInt(h.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];

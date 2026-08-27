@@ -46,9 +46,10 @@
     "logMax": 0.5325419971498551,
     "logDisplayMax": -1.016631895542134,
     "nTime": 1440,
-    "sizeMB": 5.09
+    "sizeMB": 5.07
   },
   "flux": null,
+  "fluxHires": null,
   "factories": {
     "source": "factory_locations_EASTASIA.csv",
     "species": "hfc-23",
@@ -272,6 +273,8 @@
       ]
     ]
   },
+  "beacons": null,
+  "wind": null,
   "series": {
     "species": [
       {
@@ -287,6 +290,7 @@
     ],
     "defaultSpecies": "hfc-23",
     "hasLandFrac": true,
+    "hasBeacons": false,
     "nTime": 1440
   },
   "timeStepHours": 2

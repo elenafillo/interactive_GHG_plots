@@ -59,16 +59,16 @@
     "logMax": -10.0,
     "species": "cfc-11",
     "year": 2016,
-    "source": "WorldPop R2025A constrained, UN-adjusted, 1 km, 2016 (CHN, TWN, JPN, KOR, PRK), scaled to the view's own emission total",
+    "source": "WorldPop R2025A constrained, UN-adjusted, 1 km, 2016 (CHN, TWN, JPN, KOR, PRK), block-summed to ~10 km and scaled to the view's own emission total",
     "ungroupedSectors": null,
     "publishedTotalsRatio": null,
     "grid": {
-      "latMin": 22.0,
-      "latMax": 46.00000000000001,
-      "lonMin": 105.0,
-      "lonMax": 145.0,
-      "nLat": 2880,
-      "nLon": 4800
+      "latMin": 21.999999999999996,
+      "latMax": 45.999999999999986,
+      "lonMin": 104.99999999999999,
+      "lonMax": 144.99999999999997,
+      "nLat": 288,
+      "nLon": 480
     },
     "totalTgPerYear": 0.015055,
     "layers": {
@@ -82,6 +82,136 @@
     }
   },
   "factories": null,
+  "beacons": {
+    "mask": "land_cover.nc",
+    "value": "footprint summed over land cells in the box, per land cell",
+    "cutPercentiles": [
+      65.0,
+      90.0
+    ],
+    "cuts": [
+      0.00037352878021343523,
+      0.0023883300670641478
+    ],
+    "nTime": 672,
+    "boxes": [
+      {
+        "id": "A",
+        "name": "South Korea",
+        "lat": [
+          34.5,
+          38.2
+        ],
+        "lon": [
+          126.0,
+          129.6
+        ],
+        "dot": [
+          126.98,
+          37.57
+        ],
+        "cells": 160,
+        "landCells": 115,
+        "landFrac": 0.7188,
+        "litFrac": 0.4315,
+        "highFrac": 0.0848,
+        "r": -0.056,
+        "sepPpx": -4.91
+      },
+      {
+        "id": "B",
+        "name": "Western Japan",
+        "lat": [
+          32.5,
+          36.0
+        ],
+        "lon": [
+          129.6,
+          136.0
+        ],
+        "dot": [
+          130.4,
+          33.59
+        ],
+        "cells": 252,
+        "landCells": 109,
+        "landFrac": 0.4325,
+        "litFrac": 0.5015,
+        "highFrac": 0.1756,
+        "r": -0.179,
+        "sepPpx": -7.07
+      },
+      {
+        "id": "C",
+        "name": "Shandong",
+        "lat": [
+          34.5,
+          38.2
+        ],
+        "lon": [
+          115.0,
+          122.5
+        ],
+        "dot": [
+          116.99,
+          36.67
+        ],
+        "cells": 352,
+        "landCells": 243,
+        "landFrac": 0.6903,
+        "litFrac": 0.2262,
+        "highFrac": 0.0982,
+        "r": 0.873,
+        "sepPpx": 16.47
+      },
+      {
+        "id": "D",
+        "name": "Anhui and Jiangsu",
+        "lat": [
+          31.5,
+          34.5
+        ],
+        "lon": [
+          116.0,
+          120.5
+        ],
+        "dot": [
+          118.8,
+          32.06
+        ],
+        "cells": 169,
+        "landCells": 167,
+        "landFrac": 0.9882,
+        "litFrac": 0.25,
+        "highFrac": 0.0551,
+        "r": 0.522,
+        "sepPpx": 10.11
+      },
+      {
+        "id": "E",
+        "name": "South of Shanghai",
+        "lat": [
+          28.3,
+          31.2
+        ],
+        "lon": [
+          118.8,
+          122.5
+        ],
+        "dot": [
+          120.16,
+          30.27
+        ],
+        "cells": 132,
+        "landCells": 97,
+        "landFrac": 0.7348,
+        "litFrac": 0.3408,
+        "highFrac": 0.0863,
+        "r": 0.085,
+        "sepPpx": 5.7
+      }
+    ]
+  },
   "wind": {
     "atlas": {
       "u": "wind_u.png",
@@ -126,6 +256,7 @@
     ],
     "defaultSpecies": "cfc-11",
     "hasLandFrac": true,
+    "hasBeacons": true,
     "nTime": 672
   },
   "timeStepHours": 2

@@ -216,9 +216,93 @@ def verify(site: str) -> list[str]:
     if meta.get("flux") and not (out / meta["flux"]["file"]).exists():
         fails.append("meta advertises flux.png but it is missing")
 
+    fails += _verify_beacons(meta, series)
     fails += _verify_flux(meta, out, cfg)
     fails += _verify_flux_hires(meta, out)
     fails += _verify_wind(meta, out, cfg, fp_ds)
+    return fails
+
+
+def _verify_beacons(meta: dict, series: dict) -> list[str]:
+    """The beacon boxes and their per-frame levels.
+
+    Three properties the exporter cannot assert about itself.
+
+    **The boxes are disjoint.** A cell counted into two beacons makes them not
+    independent, which is the one thing the guessing game asks of them. Checked
+    on the intervals rather than on cells, with the same half-open rule the
+    export aggregates by.
+
+    **A letter lights sometimes and not always**, the same guard the factory
+    threshold gets: a beacon lit on every frame or on none is a dead control,
+    and nothing else on the page would look wrong.
+
+    **The answer key still points where it did.** Printed rather than asserted
+    -- the suite in web/js/story/selftest.mjs owns that assertion -- but this is
+    the table to read when a re-export moves something, and the shipped levels
+    are re-checked against the `litFrac` meta.json advertises, so the two halves
+    of the export cannot drift apart.
+    """
+    b = meta.get("beacons")
+    lv = series.get("beacons")
+    fails: list[str] = []
+    if not b:
+        if lv:
+            fails.append("series.json carries beacon levels but meta.json has no beacons")
+        return fails
+    if not lv:
+        fails.append("meta.json advertises beacons but series.json carries no levels")
+        return fails
+
+    boxes = b["boxes"]
+    n_time = len(series["timeMs"])
+    if len(lv) != len(boxes):
+        fails.append(f"{len(lv)} rows of beacon levels for {len(boxes)} boxes")
+        return fails
+
+    for box, other in ((boxes[i], boxes[j])
+                       for i in range(len(boxes)) for j in range(i + 1, len(boxes))):
+        lat_hit = box["lat"][0] < other["lat"][1] and other["lat"][0] < box["lat"][1]
+        lon_hit = box["lon"][0] < other["lon"][1] and other["lon"][0] < box["lon"][1]
+        if lat_hit and lon_hit:
+            fails.append(f"beacon boxes {box['id']} and {other['id']} overlap")
+
+    lo_cut, hi_cut = b["cuts"]
+    if not lo_cut < hi_cut:
+        fails.append(f"beacon cuts are not ordered: medium {lo_cut}, high {hi_cut}")
+
+    print(f"beacons: {len(boxes)} boxes, cuts {lo_cut:.3e} / {hi_cut:.3e} "
+          f"({b['cutPercentiles'][0]:g}th / {b['cutPercentiles'][1]:g}th percentile, "
+          f"{b['value']})")
+    obs = series["species"][series["defaultSpecies"]]["obs"]
+    for box, row in zip(boxes, lv):
+        if len(row) != n_time:
+            fails.append(f"beacon {box['id']} has {len(row)} levels, expected {n_time}")
+            continue
+        if set(row) - {0, 1, 2}:
+            fails.append(f"beacon {box['id']} carries levels outside 0/1/2")
+            continue
+        lit = [v > 0 for v in row]
+        frac = sum(lit) / len(lit)
+        if abs(frac - box["litFrac"]) > 5e-4:
+            fails.append(f"beacon {box['id']} is lit on {frac:.1%} of frames but "
+                         f"meta says {box['litFrac']:.1%}")
+        if frac == 0 or frac == 1:
+            fails.append(f"beacon {box['id']} is lit on {frac:.0%} of frames -- "
+                         "a beacon that never changes is a dead control")
+        if not (box["lat"][0] <= box["dot"][1] < box["lat"][1]
+                and box["lon"][0] <= box["dot"][0] < box["lon"][1]):
+            fails.append(f"beacon {box['id']}'s dot sits outside its own box")
+
+        seen = [(o, l) for o, l in zip(obs or [], lit) if o is not None]
+        sep = ""
+        if seen and any(l for _, l in seen) and any(not l for _, l in seen):
+            on = [o for o, l in seen if l]
+            off = [o for o, l in seen if not l]
+            sep = f"  lit-minus-dark {sum(on) / len(on) - sum(off) / len(off):>+5.1f}"
+        r = "" if box["r"] is None else f"  r {box['r']:>+6.3f}"
+        print(f"  {box['id']} {box['name']:<20s} {box['landCells']:4d} land cells "
+              f"({box['landFrac']:.0%})  lit {frac:>4.0%}{r}{sep}")
     return fails
 
 

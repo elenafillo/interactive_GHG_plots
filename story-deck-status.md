@@ -4,9 +4,15 @@ Current state and what is left. The long plan
 (`i-want-to-create-immutable-quasar.md`) stays as the archaeology — every number
 below was measured there, and this file does not repeat the working.
 
-**Last updated 24 Aug 2026.** Both suites green: 463 checks in
-`web/js/story/selftest.mjs`, and `web/js/selftest.mjs` untouched and still green.
-(Counted, not remembered — this file has carried two different stale numbers.)
+**Last updated 26 Aug 2026.** Both suites green: `web/js/story/selftest.mjs` now
+runs three decks — **`rgl: 464 · gsn: 238 · cfc11: 253`**, 955 in total — and
+`web/js/selftest.mjs` is untouched and still green. (Counted, not remembered —
+this file has carried two different stale numbers.)
+
+⚠ **Ridge Hill's 464 is the regression guarantee for the engine extraction and
+must not move.** Every check the other two decks have gained since sits behind a
+gate this deck does not pass through. The Gosan decks are
+`story-cfc11-deck-status.md`'s.
 
 ---
 
@@ -25,10 +31,20 @@ time, colour never the only channel.
 
 ```
 node scripts/serve.mjs             # then open /story.html
-node web/js/story/selftest.mjs     # 463 checks, the harness — there is no browser automation here
+node web/js/story/selftest.mjs     # 955 checks over three decks — there is no browser automation here
 node web/js/selftest.mjs           # the explorer's own
 node scripts/measure_seeding.mjs   # measures the seeding against the shipped atlases
+node scripts/frame_at.mjs cfc11 "5 Jul 2016 23:00"   # which frame is that moment?
 ```
+
+**Never work a frame index out by hand.** It is a position in `series.json`'s
+`timeMs`, not an offset from the start of the record, and the two Gosan exports
+are full of holes — `data-gsn-cfc11` drops 28–30 June, 16 July and 24 July. The
+`t = day*24 + hour - 24` in `beats-rgl.js` holds only at Ridge Hill, where
+February 2020 is hourly and complete; ask it for 5 July 2016 14:00 and it says
+415 where the frame is 379. `frame_at.mjs` reads the axis instead, and also says
+whether the frame carries a reading at all — 46% of CFC-11's do not, so a date
+picked off a calendar can put an empty bar on screen.
 
 Re-export only when the data changes:
 
@@ -97,6 +113,13 @@ correlation payoff was never built and probably never should be.
 Play windows are stored as **offsets** from the anchor, so retiming an act moves
 its animation with it.
 
+⚠ **The `copy frames` button and the `moment:` readout were removed from the
+panel on 26 Aug 2026**, on all three pages. The scrubber, `[` `]`, `?tune=1` and
+the per-deck `localStorage` write all still work, so a moment tuned on the night
+still survives a refresh — but there is no longer a one-click way to get the
+numbers back out for pasting into a beats file. Read them out of
+`ghg.story.frames.<deck>`, or put the button back.
+
 ## The bar
 
 Upright, in the top-left corner and in its own box — deliberately not inside the
@@ -112,6 +135,19 @@ absent through `where` and the whole sources card, where there is no hour
 attached to the map. The last act is fullscreen and lets the bar carry the
 month; no act draws the chart any more, though `chart: true` still works.
 
+**Three states, not two, since 26 Aug 2026.** An hour the instrument does not
+have draws struck out — diagonal hatching across the track — and captioned "no
+reading", which is neither a hidden bar nor a low one. It used to draw a flat
+empty bar, i.e. *clean air*, which is the one thing it must never say about an
+hour nobody measured. Two channels and neither is colour: grey alone would not
+do, because on this bar grey *is* the empty track.
+
+⚠ **Ridge Hill never reaches it** — 696 of 696 frames here are observed, so the
+state is invisible on this deck and every check for it skips. It exists for the
+two Gosan decks, which are 341 and 307 frames short of a full record. The chrome
+is shared, so a change to `paintMeter` or to `.meter*` in `story.css` lands on all
+three pages. Full account in `story-cfc11-deck-status.md`, 26 Aug 2026.
+
 ## Files
 
 | file | role |
@@ -120,13 +156,14 @@ month; no act draws the chart any more, though `chart: true` still works.
 | `web/js/story/beats.js` | `FRAMES`, `RELEASES`, every act and caption. No DOM, no imports |
 | `web/js/story/deck.js` | render loop, camera, keys, caption, meter, scrubber |
 | `web/js/story/mapview.js` | **fork** of `../mapview.js` — graticule fix, `cities`, source rasters |
-| `web/js/story/selftest.mjs` | 463 checks, including a headless mount that walks all 19 slides |
+| `web/js/story/selftest.mjs` | 955 checks over three decks, 464 of them this one, including a headless mount that walks all 19 slides |
 | `web/js/wind.js` | `WindField` (sampler), `WindLayer` (ambient air + the red stream) |
 | `web/js/advect.js` | RK2 midpoint, back-tracks, the fan, trails |
 | `web/js/palette.js` | the ramps and `SOURCE_DISPLAY`. All CVD-measured |
 | `scripts/export_web_data.py` | the exporter. `slice_met.py` feeds it the wind |
 | `scripts/verify_export.py` | re-encodes from source and demands byte-equality |
 | `scripts/measure_seeding.mjs` | decodes the shipped atlases with node's own zlib |
+| `scripts/frame_at.mjs` | date → frame index, the direction nothing else goes |
 
 Shipping in `web/data-rgl/` (4.3 MB): footprint atlas 1.51 MB, wind 2.56 MB,
 emissions total + three families, basemap, series.
@@ -179,6 +216,32 @@ emissions total + three families, basemap, series.
       carried straight over from the coarse layer. The hi-res raster hides 64%
       of its cells and draws the rest harder, so the same number is a quieter
       map with brighter sources. Judge by eye.
+
+### Gosan — the purple map (Brief A)
+
+- [x] **EDGAR v8.0 HFC-23 2016 is wired in and on screen.** One raster, not
+      four: EDGAR publishes this gas under a single sector (`PRU_SOL`) whose
+      grid is bit-identical to TOTALS, so `export_flux_hires` grew a
+      `sectors: None` branch that reads the published total directly. Three
+      other things had to stop being CH₄-only — `_read_edgar_01` now takes a
+      species (molar mass, **and** the variable name, since v7 is `emi_ch4` and
+      v8 is `fluxes`), and the encode range moved onto the site spec. The
+      hi-res path was chosen over the coarse `flux` layer precisely to avoid a
+      regrid: it ships 400×240 at native 0.1° on its own grid, where `flux`
+      draws at the footprint's 114×102. 235 GSN checks green.
+- [ ] **Tune the contrast by eye.** `SOURCE_DISPLAY_BY_SPECIES['hfc-23']` is
+      `floor −12.25, ceil −10.25, γ 1.35` — the floor is where the top 95% of
+      the view's mass sits, the ceiling is the field maximum. Unlike CH₄ this
+      field has no valley to anchor a floor in, so those numbers are defensible
+      rather than principled. `T` to move them, `C` to copy back.
+- [ ] **Teach the suite what a single-source deck is.** `expectSources` is still
+      `false` for GSN, so the sources-card block is *skipped* rather than
+      asserting the new raster — it passes today by not looking. Wants a mode
+      that checks `layers.total`, grid finer than the footprint, grid inside the
+      view, and skips the three-family and `meta.flux.logMin` checks (GSN's
+      `meta.flux` is null).
+- [ ] **Only 2016 is wired.** 2020 is in `data/fluxes/hfc-23.zip`, unextracted;
+      `GSN-2021` has no 2021 inventory at all, nearest is 2020.
 
 ### Build
 

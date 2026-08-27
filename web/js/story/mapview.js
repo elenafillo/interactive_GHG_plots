@@ -34,7 +34,9 @@
 
 // One directory down from the original, so these reach back up. palette.js is
 // imported read-only and unmodified -- the explorer and the deck share it.
-import { C, footprintLUT, FLUX_LUT, fluxLUT, sourceDisplayFor, buildSourceLUTs } from '../palette.js';
+import {
+  C, footprintLUT, FLUX_LUT, fluxLUT, sourceDisplayFor, buildSourceLUTs, BEACON_COLOURS,
+} from '../palette.js';
 
 /**
  * Map width that leaves the whole explorer inside the viewport.
@@ -86,7 +88,7 @@ export class MapView {
     // silently do nothing.
     this.layers = {
       flux: 0, footprint: 1, graticule: 1, station: 1, factories: 0,
-      cities: 0, contribution: 0,
+      cities: 0, contribution: 0, beacons: 0,
       // The sources card: the 0.1 deg total, then one per family. Independent
       // alphas rather than a single "which group" selector, so stepping through
       // them one at a time and cross-fading or stacking them are the same
@@ -108,6 +110,19 @@ export class MapView {
     // be recomputed every draw rather than cached and invalidated.
     this.factoryLitCode = f && f.litCode ? f.litCode : Infinity;
     this.factoryCells = this._resolveCells(this.factories);
+
+    // The five named regions the CFC-11 deck asks its audience to choose
+    // between, and their 0/1/2 level per frame. Absent at every other site, and
+    // read once here for the same reason the plant list is: draw() should cost a
+    // length check at a site without them, not a walk down the meta chain.
+    //
+    // Both halves or neither. `data.has.beacons` is already the "the boxes and
+    // the levels are both here and agree about how many there are" question, so
+    // asking it once here is what stops a half-exported deck from drawing five
+    // boxes that never light.
+    const beaconsReady = data.has && data.has.beacons;
+    this.beacons = beaconsReady ? data.beacons.boxes : [];
+    this.beaconLevels = beaconsReady ? data.beaconLevels : [];
 
     // Offscreen buffers sized to the native data grids. Emissions are optional
     // -- Gosan has footprints but no inventory -- so that buffer only exists
@@ -201,6 +216,26 @@ export class MapView {
       if (cell >= 0 && frame[cell] >= code) out[i] = true;
     }
     return out;
+  }
+
+  /**
+   * Each beacon's 0/1/2 level at timestep t: dark, lit, or lit hard.
+   *
+   * Public and separate from the drawing for the same reason `factoryLit` is:
+   * this is the deck's argument in one array, it is what a readout or the suite
+   * wants to ask about, and a state channel that silently never fires is the
+   * main risk in the whole brief. Reading it costs five array lookups.
+   *
+   * The levels are computed in the exporter against the un-quantised
+   * footprints, so this is a lookup and not a re-aggregation of the atlas --
+   * exact, and free per frame.
+   */
+  beaconLevel(t) {
+    const i = Math.max(0, Math.min(this.data.nTime - 1, t | 0));
+    return this.beacons.map((_, k) => {
+      const row = this.beaconLevels[k];
+      return row ? (row[i] | 0) : 0;
+    });
   }
 
   _buffer(w, h) {
@@ -378,6 +413,11 @@ export class MapView {
 
     this._drawCoast();
     if (this.layers.factories > 0) this._drawFactories(this.layers.factories);
+    // Above the coast and the plume, below the station. The beacons are a
+    // question put to the audience about the plume underneath them, so they have
+    // to sit on top of it -- but the station is where the smelling happens and
+    // stays the last thing drawn.
+    if (this.layers.beacons > 0) this._drawBeacons(this.layers.beacons);
     if (extra) extra(cx, this);
     if (this.layers.station > 0) this._drawStation(this.layers.station);
   }
@@ -562,6 +602,148 @@ export class MapView {
       cx.stroke();
       cx.fillStyle = lit[i] ? C.factoryLit : C.factory;
       cx.fill();
+    }
+    cx.restore();
+  }
+
+  /**
+   * Ink that stays legible on a given beacon fill.
+   *
+   * The five hues run from a pale amber to a dark brown, and the fill's opacity
+   * is a *state* channel, so the letter's background changes with both which
+   * beacon this is and what it is doing. A single letter colour is therefore
+   * wrong for at least one of the fifteen combinations, and the one it is wrong
+   * for is unpredictable from the hex.
+   *
+   * Blended over the surface rather than over whatever is actually underneath,
+   * which is honest because the surface-coloured collar in `_drawBeacons` is
+   * opaque: the letter never sits on the plume, it sits on the fill over the
+   * collar.
+   *
+   * ⚠ **Computed, not thresholded, so the hues stay easy to change.** The first
+   * version switched on a luminance cut-off, which is the same thing only when
+   * the cut-off happens to be right -- and it was wrong for four of the fifteen
+   * hue-and-state pairs, each of them a letter that would simply have been hard
+   * to read on the night. Contrast is what the question is actually about, so
+   * both candidates are measured and the better one wins. Swapping a beacon
+   * colour therefore cannot silently cost a letter.
+   */
+  _beaconInk(hex, alpha) {
+    const lin = (v) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+    const lum = (rgb) => 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+    const rgb = (h) => {
+      const n = parseInt(h.slice(1), 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    };
+    // The fill over the pale surface, per channel.
+    const surface = rgb(C.surface);
+    const bg = lum(rgb(hex).map((c, i) => c * alpha + surface[i] * (1 - alpha)));
+    const against = (ink) => {
+      const l = lum(rgb(ink));
+      return (Math.max(l, bg) + 0.05) / (Math.min(l, bg) + 0.05);
+    };
+    return against(C.ink) >= against(C.surface) ? C.ink : C.surface;
+  }
+
+  /**
+   * The five beacons: a region, a mark on its city, and the letter that names
+   * it.
+   *
+   * This is the deck's central mechanic. The audience is asked which of five
+   * places the station can smell right now, and each beacon answers for itself
+   * every frame -- so what matters here is that a lit beacon is unmistakably lit
+   * from the back of a room, and that the way it says so does not depend on
+   * telling five hues apart.
+   *
+   * **Three channels carry the state, and only one of them is colour:**
+   *
+   *   1. **fill opacity** -- a whisper, then half, then solid;
+   *   2. **ring weight** -- hairline, normal, thick;
+   *   3. **radius** -- the high state is visibly larger than the other two.
+   *
+   * So the states survive greyscale, colour-vision deficiency and a projector
+   * with its contrast crushed, which is the deck's standing rule. The **letters
+   * are identity, not state**: they are always drawn, at full strength, and they
+   * never change. A reader who can separate none of the hues still reads which
+   * letters are lit, which is the only thing act 5 asks of them.
+   *
+   * The box is drawn faintly and the mark is drawn on the city inside it,
+   * because a beacon is a *region* the station can smell and a dot alone would
+   * claim it was a point source -- on the one deck that has no point sources.
+   * The box is dashed in the dark state and solid once lit, which is a fourth
+   * redundant channel and free.
+   *
+   * Three passes per mark, exactly as `_drawFactories`: a surface-coloured
+   * collar so the mark separates from a saturated plume, a dark grey edge, then
+   * the fill. Stroking widest-first leaves each pass showing as a band.
+   *
+   * Constant pixel size across zoom, like the plants: the mark is a symbol
+   * naming a place, not an area. The **box** is in degrees and does grow with
+   * the camera, because that one really is an extent.
+   */
+  _drawBeacons(alpha) {
+    if (!this.beacons.length) return;
+    const cx = this.ctx;
+    const level = this.beaconLevel(this.t);
+    // Per state: fill opacity, ring width, mark radius, box opacity, box dash.
+    const STATE = [
+      { fill: 0.10, ring: 1.0, r: 12, box: 0.20, dash: [4, 4] },
+      { fill: 0.55, ring: 2.0, r: 12, box: 0.45, dash: [] },
+      { fill: 0.92, ring: 3.5, r: 15, box: 0.75, dash: [] },
+    ];
+
+    cx.save();
+    cx.globalAlpha = alpha;
+    cx.lineJoin = 'round';
+    cx.textAlign = 'center';
+    cx.textBaseline = 'middle';
+
+    for (let i = 0; i < this.beacons.length; i++) {
+      const b = this.beacons[i];
+      const s = STATE[Math.max(0, Math.min(2, level[i]))];
+      const hue = BEACON_COLOURS[i % BEACON_COLOURS.length];
+
+      // The region. Half-open in the data, drawn on its outer edges -- the
+      // exporter owns which cells belong to whom and refuses to ship two
+      // beacons sharing one, so nothing here has to encode the convention.
+      const bx = this.x(b.lon[0]);
+      const by = this.y(b.lat[1]);
+      const bw = this.x(b.lon[1]) - bx;
+      const bh = this.y(b.lat[0]) - by;
+      cx.save();
+      cx.globalAlpha = alpha * s.box;
+      cx.strokeStyle = hue;
+      cx.lineWidth = level[i] === 2 ? 2 : 1.25;
+      cx.setLineDash(s.dash);
+      cx.strokeRect(bx, by, bw, bh);
+      cx.restore();
+
+      // The mark, on the city.
+      const px = this.x(b.dot[0]);
+      const py = this.y(b.dot[1]);
+      const r = s.r;
+      if (px < -r - 4 || px > this.w + r + 4 || py < -r - 4 || py > this.h + r + 4) continue;
+
+      cx.beginPath();
+      cx.arc(px, py, r, 0, Math.PI * 2);
+      cx.strokeStyle = C.surface;
+      cx.lineWidth = s.ring + 3;
+      cx.stroke();
+      cx.strokeStyle = level[i] === 0 ? C.mapEdge : hue;
+      cx.lineWidth = s.ring;
+      cx.stroke();
+      cx.save();
+      cx.globalAlpha = alpha * s.fill;
+      cx.fillStyle = hue;
+      cx.fill();
+      cx.restore();
+
+      cx.font = `700 ${Math.round(r * 1.15)}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+      cx.fillStyle = this._beaconInk(hue, s.fill);
+      cx.fillText(b.id, px, py + 0.5);
     }
     cx.restore();
   }

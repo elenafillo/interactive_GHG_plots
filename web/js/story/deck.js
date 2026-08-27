@@ -245,6 +245,17 @@ export async function mountDeck({ deck } = {}) {
     });
   }
 
+  /**
+   * What the bar says about an hour the instrument does not have.
+   *
+   * Written on every paint rather than toggled, so the words hold their place in
+   * the layout whatever state the meter is in -- the month act steps nine times
+   * a second across a record a third empty, and a note that took its space as it
+   * appeared would make the whole meter jump for twenty seconds. The stylesheet
+   * moves its `visibility`, not its box. See `.meter-note` in story.css.
+   */
+  const NO_READING = 'no reading';
+
   /** How much is being smelled, as a height: nothing to a lot, no numbers. */
   function paintMeter(stop) {
     // Only where there is air on screen to be smelling. The bar answers "how
@@ -256,10 +267,32 @@ export async function mountDeck({ deck } = {}) {
     $('meter').hidden = !show;
     if (!show) return;
     const v = data.current.obs ? data.current.obs[state.t] : null;
-    $('meterFill').style.height = `${Math.round(smellOf(v) * 100)}%`;
+    /**
+     * ⚠ **Three states, because empty and missing are different claims.**
+     *
+     * `smellOf(null)` is 0, so a blank hour used to draw the same flat bar as an
+     * hour that genuinely read background -- which on this deck means clean air.
+     * 46% of the Gosan record has no observation, so that was the deck asserting
+     * "nothing here" for half of June and July, in the register the audience
+     * reads fastest, while the caption said the opposite. It is also what forced
+     * every anchored play window onto a run of consecutive observed frames and
+     * cut the CFC-11 episode to four hours.
+     *
+     * So: hidden (no air on screen), a height (a reading), or struck out and
+     * captioned (no reading). The fill is driven to zero here rather than left
+     * where it was, so there is no level under the hatch to misread.
+     *
+     * Ridge Hill is 696 of 696 observed and never reaches this branch; Gosan and
+     * the CFC-11 deck both do, on 341 and 307 frames respectively.
+     */
+    const blank = v == null;
+    $('meter').classList.toggle('no-reading', blank);
+    $('meterNote').textContent = NO_READING;
+    $('meterFill').style.height = blank ? '0%' : `${Math.round(smellOf(v) * 100)}%`;
     // Presenter-only, behind N: the reading, then what the bar is actually
-    // drawing. Two numbers are allowed here and nowhere else on screen.
-    $('meterNum').textContent = v == null ? ''
+    // drawing. Two numbers are allowed here and nowhere else on screen -- and on
+    // a blank hour there are none to give, so it says so in words instead.
+    $('meterNum').textContent = blank ? NO_READING
       : `${Math.round(v)} · +${Math.round(Math.max(0, v - smell.base))}`;
   }
 
@@ -274,7 +307,6 @@ export async function mountDeck({ deck } = {}) {
     paintMeter(stop);
     $('scrubRange').value = String(state.t);
     $('scrubTime').textContent = stamp(state.t);
-    $('scrubAnchor').textContent = stop.anchor ? `moment: ${stop.anchor}` : 'no moment on this slide';
   }
 
   function setT(t, { redrawChart = true } = {}) {
@@ -444,20 +476,6 @@ export async function mountDeck({ deck } = {}) {
     // Preview while dragging; the anchor only moves on release, so a drag across
     // the month does not rebuild the deck sixty times.
     setT(+scrub.value);
-  });
-
-  $('copyFrames').addEventListener('click', async () => {
-    const text = JSON.stringify(frames, null, 2);
-    try {
-      await navigator.clipboard.writeText(text);
-      $('copyFrames').textContent = 'copied';
-    } catch {
-      // Clipboard is gated on permissions and a user gesture; the console is a
-      // reliable fallback and this is a developer-facing affordance anyway.
-      console.log(text);
-      $('copyFrames').textContent = 'see console';
-    }
-    setTimeout(() => { $('copyFrames').textContent = 'copy frames'; }, 1400);
   });
 
   $('clearFrames').addEventListener('click', () => {
