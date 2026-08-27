@@ -25,7 +25,7 @@ import { TimeSeries } from '../timeseries.js';
 import { WindLayer, viewFromCamera } from '../wind.js';
 import { C, sourceDisplayFor, footprintLUT } from '../palette.js';
 import { MapView } from './mapview.js';
-import { resolveFrames, buildDeck, toSlides, resolvePlay, resolveFigures, pickTargets } from './engine.js';
+import { resolveFrames, buildDeck, toSlides, resolvePlay, resolveFigures, pickTargets, showsStamp } from './engine.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -450,19 +450,18 @@ export async function mountDeck({ deck } = {}) {
     $('caption').textContent = stop.caption;
     $('stamp').textContent = stamp(state.t);
     /**
-     * A stop may turn the date off, and one act needs to.
+     * The date shows on the stops that have an hour on them, and `showsStamp` is
+     * where that is decided -- see `DATED_LAYERS` in engine.js. A stop with only
+     * geography and an emissions guess on it gets no date, because it does not
+     * come from one; the same reasoning as `paintMeter` a few lines up, which
+     * hides the bar where there is no air on screen for it to be about.
      *
-     * The beacon picks are five different days -- one per region, because those
-     * are the hours the record says each region is being smelled -- and the
-     * audience jumps between them in whatever order the room asks for. With the
-     * date on screen that reads as the deck losing its place; the stamp is the
-     * one piece of chrome that would be *saying* something the act does not
-     * mean. Written every paint rather than toggled once, like everything else
-     * here, so re-entering a slide cannot leave it in the other state.
-     *
-     * Default is on: `stamp` is undefined on every other stop in every deck.
+     * Written every paint rather than toggled once, like everything else here,
+     * so re-entering a slide cannot leave it in the other state. `.stamp` is
+     * absolutely positioned, so nothing moves when it goes -- which matters on
+     * the month act, stepping nine frames a second past the meter.
      */
-    $('stamp').hidden = stop.stamp === false;
+    $('stamp').hidden = !showsStamp(stop);
     // A stop whose animation is not built yet still shows its framing, and says
     // so, rather than being silently dropped from the running order.
     const missing = stop.needs.includes('wind') && !hasWind;

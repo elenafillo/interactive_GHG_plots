@@ -299,13 +299,8 @@ function acts(f) {
           layers: { station: 0, graticule: 1 },
         },
         {
-          caption: 'An island south of Korea, in the sea.',
+          caption: 'A sensor, in an island south of Korea.',
           camera: JEJU,
-          layers: { station: 0, graticule: 1 },
-        },
-        {
-          caption: 'Same idea. One sniffer on a clifftop.',
-          camera: CLIFF,
           layers: { station: 1, graticule: 1 },
           /**
            * The first picture in any of the three decks.
@@ -330,6 +325,23 @@ function acts(f) {
               at: 'left-of-centre',
               size: 'lg',
               alt: 'The measurement mast on the clifftop at Gosan',
+            },
+          ],
+        },
+        
+        {
+          caption: 'This sensor detected a mystery...',
+          camera: JEJU,
+          layers: { station: 1, graticule: 1 },
+        },
+        {
+          camera: JEJU,
+          layers: { station: 1, graticule: 1 },
+          images: [
+            {
+              src: 'img/gsn-cfc11/nyt_headline_mystery.png',
+              size: 'card',
+              alt: 'A screenshot of a New York Times headline: Banned Ozone-Harming Gas Creeps Back, Suggesting a Mystery Source',
             },
           ],
         },
@@ -466,7 +478,7 @@ function acts(f) {
           needs: ['wind'],
         },
         {
-          caption: 'Wind the clock back. This air crossed eastern China.',
+          caption: 'Wind the clock back.',
           camera: CHINA,
           layers: { wind: 1 },
           release: { from: 'sources' },
@@ -584,13 +596,20 @@ function acts(f) {
          * here, which is what makes `[` and `]` on a pick truthful rather than
          * silently moving the clean day.)
          *
-         * ⚠ **The stamp is off on all five.** They span 4 June to 17 July --
+         * ⚠ **The stamp is off on all five, and this is the one override in
+         * three decks.** The date is otherwise derived -- `showsStamp` gives it
+         * to any stop with a dated layer on, and these are footprint stops, so
+         * the rule says show. The act says don't: they span 4 June to 17 July,
          * five different days, one per region, which is the act working as
          * designed and not a chronology to be fixed. With the date on screen the
          * jump reads as the deck losing its place; without it, the only thing
          * that changes between two picks is the thing the act is about. The
          * presenter is free to say "five different days" out loud, and the hour
          * is still on the scrubber behind H.
+         *
+         * This does not extend to hiding the date wherever the running order is
+         * awkward -- see the chronology ⚠ at the top of this file, which is
+         * `clean-smell` running before `dirty` and is still open.
          *
          * ✏️ The captions are placeholders like every other in this file, and
          * these five are the ones to be most careful with: none may name
@@ -748,6 +767,27 @@ function acts(f) {
                 + '2014 to 2017, with by far the strongest source over Shandong',
             },
           ],
+        },
+        { 
+          caption: 'Scientists can create change...',
+          camera: DOMAIN,
+          layers: { graticule: 1 },
+        },
+        { 
+          camera: DOMAIN,
+          layers: { graticule: 1 },
+          images: [
+            {
+              src: 'img/gsn-cfc11/nyt_headline_decline.png',
+              at: 'card',
+              alt: "A screenshot of a New York Times article: China's emissions of ozone-depleting gas are declining, studies find ",
+            },
+          ],
+        },
+        { 
+          caption: '',
+          camera: DOMAIN,
+          layers: { graticule: 1 },
         },
       ],
     },

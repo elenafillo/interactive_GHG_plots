@@ -42,6 +42,7 @@ import {
   MAX_CAPTION_WORDS, BANNED_WORDS, countWords, bannedIn,
   resolveFrames as resolveFramesWith, buildDeck, toSlides, resolvePlay, DEFAULT_LAYERS,
   FIGURE_SLOTS, FIGURE_SIZES, CROWDED_SLOTS, resolveFigures, pickTargets,
+  DATED_LAYERS, showsStamp,
 } from './engine.js';
 import { DECK as RGL } from './beats-rgl.js';
 import { DECK as GSN } from './beats-gsn.js';
@@ -547,6 +548,31 @@ async function runSite(site) {
   // starts from the same defaults and lists only what it changes.
   check('every stop carries a full layer set',
     slides.every((s) => KNOWN.every((k) => k in s.layers)));
+
+  // ---- the date is earned, not assumed -------------------------------------
+  //
+  // `showsStamp` decides whether the corner names an hour, and it decides it
+  // from the layers: a stop with a footprint, wind or beacons on it came from a
+  // frame, and a stop with only geography and an annual emissions guess did not.
+  // Asserted here against synthetic stops rather than only against the real
+  // decks, so the rule is pinned down independently of which stops happen to
+  // exist -- the same reason `resolvePlay` has its own arithmetic checks.
+  {
+    const stopWith = (layers, extra = {}) => ({ layers: { ...DEFAULT_LAYERS, ...layers }, ...extra });
+    check('a dated layer earns the date',
+      DATED_LAYERS.every((k) => showsStamp(stopWith({ [k]: 1 }))),
+      DATED_LAYERS.filter((k) => !showsStamp(stopWith({ [k]: 1 }))).join(',') || 'all four');
+    // The emissions map, the source families, the plants, the cities: true for a
+    // year or true always, and on none of them does the hour mean anything.
+    const undated = KNOWN.filter((k) => !DATED_LAYERS.includes(k));
+    check('an undated layer does not',
+      undated.every((k) => !showsStamp(stopWith({ [k]: 1 }))),
+      undated.filter((k) => showsStamp(stopWith({ [k]: 1 }))).join(',') || `${undated.length} layers`);
+    // The beacon picks, and nothing else in three decks, say so out loud.
+    check('an explicit stamp beats the rule',
+      showsStamp(stopWith({ footprint: 1 }, { stamp: false })) === false
+      && showsStamp(stopWith({ flux: 1 }, { stamp: true })) === true);
+  }
 
   // ---- figures -------------------------------------------------------------
   //
@@ -2690,6 +2716,24 @@ async function runSite(site) {
       }
       check('every slide can be entered', !walkErr, walkErr ? `${walkErr.message}` : `${deck.slides.length} slides`);
 
+      // The rule, through the real `paintChrome` rather than the pure function.
+      // One check over the whole deck rather than one per slide: this is the
+      // wiring, and the rule itself is already pinned down above -- and a
+      // per-slide check here would move all three counts by the length of the
+      // deck for no extra coverage. The disagreeing slides are named in the
+      // detail, since "some slide" is not enough to go on.
+      {
+        const wrong = [];
+        for (let k = 0; k < deck.slides.length; k++) {
+          const s = deck.slides[k];
+          deck.go(k);
+          if (byId('stamp').hidden !== !showsStamp(s)) wrong.push(`${s.actId}/${s.stopIndex}`);
+        }
+        check('the date is on exactly the slides that have an hour on them',
+          wrong.length === 0,
+          wrong.join(' ') || `${deck.slides.filter(showsStamp).length} of ${deck.slides.length} dated`);
+      }
+
       // The pictures, through the real `enter` rather than the beats file. The
       // static section above checks what the deck *says*; this checks that
       // entering the stop actually mounts it, and -- the half that is a real bug
@@ -3304,7 +3348,25 @@ async function runSite(site) {
           deck.go(elsewhere);
           check('no other slide in the deck shows a row', deck.picks.length === 0,
             `${deck.picks.length} on ${slides[elsewhere].actId}`);
-          check('and the date is back on', byId('stamp').hidden === false);
+
+          /**
+           * ⚠ **And the override is scoped to the act**, which is a different
+           * claim from "some other slide shows a date".
+           *
+           * This used to reuse `elsewhere` -- the first slide outside the act,
+           * which is `where/0`: a graticule and an island, and under the layer
+           * rule it has no date of its own. So the check would have failed while
+           * nothing was wrong. It has to land somewhere the rule *would* give a
+           * date to, and then a hidden stamp really is `stamp: false` leaking
+           * past the act it belongs to.
+           */
+          const dated = slides.findIndex((s) => s.actId !== pickAct.id && showsStamp(s));
+          check('a dated slide outside the act exists to check against', dated >= 0);
+          deck.go(dated);
+          check('and the date is back on there', byId('stamp').hidden === false,
+            `${slides[dated].actId}/${slides[dated].stopIndex}`);
+
+          deck.go(elsewhere);
           press('3');
           check('and 1-9 are still the act jumps there',
             slides[deck.index].actIndex === 2, `landed on ${slides[deck.index].actId}`);

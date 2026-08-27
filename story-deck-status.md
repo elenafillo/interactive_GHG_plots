@@ -4,15 +4,26 @@ Current state and what is left. The long plan
 (`i-want-to-create-immutable-quasar.md`) stays as the archaeology — every number
 below was measured there, and this file does not repeat the working.
 
-**Last updated 26 Aug 2026.** Both suites green: `web/js/story/selftest.mjs` now
-runs three decks — **`rgl: 464 · gsn: 238 · cfc11: 253`**, 955 in total — and
-`web/js/selftest.mjs` is untouched and still green. (Counted, not remembered —
-this file has carried two different stale numbers.)
+**Last updated 27 Aug 2026.** `web/js/story/selftest.mjs` runs three decks —
+**`rgl: 520 · gsn: 242 · cfc11: 379`** — and seven of them are red. See *Red at
+the moment* under **To do**; none is in the date-stamp work's reach and all
+reproduce on a clean checkout. (Counted, not remembered — this file has carried
+three different stale numbers.)
 
-⚠ **Ridge Hill's 464 is the regression guarantee for the engine extraction and
-must not move.** Every check the other two decks have gained since sits behind a
-gate this deck does not pass through. The Gosan decks are
-`story-cfc11-deck-status.md`'s.
+⚠ **Only the first two of those numbers are worth quoting.** The CFC-11 deck was
+being edited while this was written and its count went 365 → 370 → 379 in one
+session, five at a time, as pictures landed. Ridge Hill's 520 and Gosan's 242
+held throughout.
+
+⚠ **Ridge Hill's 464 was the regression guarantee for the engine extraction, and
+it is retired.** It held through the engine split, the meter's third state, the
+beacons, the picks and the pictures, because every check the other decks gained
+sat behind a gate this deck does not pass through. Two changes since have gone
+through the gate on purpose — the photographs on `where`, and the date rule
+(**Date in the corner** below), which is site-agnostic by design and changes what
+twelve of this deck's slides show. A count that moves for a stated reason is not
+the same as one that drifts, but this one is no longer a number to check against
+blind. The Gosan decks are `story-cfc11-deck-status.md`'s.
 
 ---
 
@@ -148,6 +159,33 @@ two Gosan decks, which are 341 and 307 frames short of a full record. The chrome
 is shared, so a change to `paintMeter` or to `.meter*` in `story.css` lands on all
 three pages. Full account in `story-cfc11-deck-status.md`, 26 Aug 2026.
 
+## Date in the corner
+
+**The date shows only on the slides that have an hour on them.** `showsStamp` in
+`engine.js` decides it from the layers: `footprint`, `contribution`, `wind` and
+`beacons` are read out of a frame and earn a date; the emissions map, the three
+source families, the cities and the station are geography and inventory, true for
+a year or true always, and do not.
+
+On this deck that is **12 of 22 slides**, and both groups are the obvious ones:
+
+| act | slides | why |
+|---|---|---|
+| `where` | 0–5 | Bristol, the mast, the people. No air on screen |
+| `sources` | 0–5 | the emissions guess and its three families — an annual number, not an hour |
+
+Same argument the meter already makes two sections up: it hides itself where
+there is no air for the bar to be about, and a date on the `sources` card named
+an hour that nothing on the map came from — and *moved* when the presenter
+nudged the scrubber, so the slide looked like it was answering the clock. The
+hour is still on the scrubber behind `H`.
+
+A stop can override with an explicit `stamp: true`/`false`, and exactly one act
+in three decks does: the CFC-11 beacon picks, which are footprint slides that
+deliberately hide the date because the five regions are five different days.
+Nothing on this deck sets it. `.stamp` is absolutely positioned, so nothing moves
+when it goes — which matters on `record`, stepping nine frames a second.
+
 ## Files
 
 | file | role |
@@ -156,7 +194,7 @@ three pages. Full account in `story-cfc11-deck-status.md`, 26 Aug 2026.
 | `web/js/story/beats.js` | `FRAMES`, `RELEASES`, every act and caption. No DOM, no imports |
 | `web/js/story/deck.js` | render loop, camera, keys, caption, meter, scrubber |
 | `web/js/story/mapview.js` | **fork** of `../mapview.js` — graticule fix, `cities`, source rasters |
-| `web/js/story/selftest.mjs` | 955 checks over three decks, 464 of them this one, including a headless mount that walks all 19 slides |
+| `web/js/story/selftest.mjs` | 1,127 checks over three decks, 520 of them this one, including a headless mount that walks every slide |
 | `web/js/wind.js` | `WindField` (sampler), `WindLayer` (ambient air + the red stream) |
 | `web/js/advect.js` | RK2 midpoint, back-tracks, the fan, trails |
 | `web/js/palette.js` | the ramps and `SOURCE_DISPLAY`. All CVD-measured |
@@ -171,6 +209,30 @@ emissions total + three families, basemap, series.
 ---
 
 ## To do
+
+### Red at the moment
+
+Seven checks fail on `node web/js/story/selftest.mjs`, measured 27 Aug 2026.
+**None belongs to the date-stamp change** — established rather than assumed, by
+saving the working copies, `git checkout`-ing the four story modules and running
+the suite against `HEAD`. Written down so the next person does not re-diagnose
+them:
+
+| deck | check | what it is saying |
+|---|---|---|
+| rgl | `every slide has a caption` | `where/2` and `where/5` are `''` — picture-only stops that never got a line |
+| rgl | `where/3`, `where/4`: `at a known size` | those images say `size: 'card'`, and `card` is a **slot** (`at: 'card'`), not one of `FIGURE_SIZES` (`sm`/`md`/`lg`) |
+| cfc11 | `every slide has a caption`, `where/3: at a known size` | the same two mistakes, arriving in `beats-cfc11.js` as this was written |
+| cfc11 | `a window actually plays through hours with no reading` | no play window on that deck crosses a blank hour any more, so the meter's third state ships unexercised there |
+| cfc11 | `the top clips only a handful of hours` | that deck's budget is **`clipped: 0`** and one reading of 365 now sits above `SMELL.base + span`. Either `span` moves or the budget does — but the budget was written as a claim that nothing pins the bar |
+
+⚠ **`size: 'card'` has now been written three times across two beats files**, and
+the check catches it every time but the message does not explain it. `card` is
+the slot where the picture *is* the slide; it goes in `at`, and the size is left
+off. If it lands a fourth time, the fix is in the failure message rather than in
+the beats file.
+
+The CFC-11 rows are `story-cfc11-deck-status.md`'s to resolve.
 
 ### From the screen — next up
 

@@ -13,13 +13,30 @@ Three sibling docs own their own ground and are not repeated here:
 | `story-deck-status.md` | the Ridge Hill deck, slide by slide, and its to-do list |
 | `story-cfc11-brief-deck.md` | the brief the CFC-11 scaffold was built to |
 
-**Everything checked, as of this writing:**
+**Everything checked, as of this writing (27 Aug 2026):**
 
 ```
-node web/js/story/selftest.mjs      rgl: 464 · gsn: 238 · cfc11: 385 · all green
+node web/js/story/selftest.mjs      rgl: 520 · gsn: 242 · cfc11: 379 · 7 FAILED
 node web/js/selftest.mjs            all self-tests passed
 python scripts/verify_export.py     all four sites -> all checks passed
 ```
+
+⚠ **This deck's count is a moving target and that reading is minutes old.** It
+went 365 → 370 → 379 during one session while pictures were being added to
+`beats-cfc11.js`; each picture is five checks and each new stop is more. The
+number that means something is the *delta*: the date rule (§5a) contributes
+**+4 to every deck** and one more to this one, for the extra check the beacon act
+needs. Ridge Hill's 520 and Gosan's 242 were stable across the same session.
+
+⚠ **Story checks are red, and none of them is in the date rule's reach** — every
+one reproduces on a clean checkout of the story modules, which was measured
+rather than assumed. Two are longstanding and this deck's own: no play window
+crosses a blank hour any more, so the meter's third state ships unexercised here,
+and one reading of 365 clips a bar whose budget is `clipped: 0`. The rest are the
+picture work in flight on both decks — empty captions on picture-only stops, and
+`size: 'card'` where `card` is a **slot** (`at: 'card'`) and not one of
+`FIGURE_SIZES`. That last one has now been written three times in two files;
+`story-deck-status.md`'s *Red at the moment* carries the running account.
 
 ---
 
@@ -208,7 +225,7 @@ from it; the numbers do, and the exporter reproduces them independently.
 
 | module | what it owns |
 |---|---|
-| `engine.js` | the deck machinery with no story in it: caption rules, frame overrides, play windows, act flattening, `pickTargets` — which stop a named pick lands on — and the figure slots. **No DOM, no canvas, no imports**, so the suite can assert on every caption, on every button landing somewhere real, and on every picture sitting somewhere named, without a browser |
+| `engine.js` | the deck machinery with no story in it: caption rules, frame overrides, play windows, act flattening, `pickTargets` — which stop a named pick lands on — the figure slots, and `DATED_LAYERS`/`showsStamp` (§5a). **No DOM, no canvas, no imports**, so the suite can assert on every caption, on every button landing somewhere real, and on every picture sitting somewhere named, without a browser |
 | `deck.js` | the presenter runtime — fullscreen map, one caption, one meter, one date, any pictures the stop asks for; live-editable moments |
 | `mapview.js` | a **deliberate fork** of `../mapview.js`, additive only: graticule, beacons, the hi-res emissions rasters. Keeps the explorer's copy byte-identical |
 | `beats-rgl.js`, `beats-gsn.js`, `beats-cfc11.js` | one deck's story each: frames, cameras, acts, captions |
@@ -289,6 +306,60 @@ so it is one row there and not the two budgeted.
 ⚠ **`#figures` is on all three pages**, because `deck.js` looks the id up by name
 and all three share it. A deck with no pictures gets an empty container.
 
+### The date in the corner — `DATED_LAYERS` and `showsStamp`
+
+The date at bottom-right is a claim about the hour, and until now every stop made
+it. Most cannot: `sources` shows an annual emissions guess with no air on screen,
+`where` shows an island and a graticule, and this deck's `answer` is a four-year
+average. On all of them the stamp named an hour nothing on the map came from —
+and *changed* when the presenter nudged the scrubber, so the slide looked like it
+was answering the clock.
+
+So it is derived from the layers rather than declared per stop:
+
+| dated — earns the date | undated |
+|---|---|
+| `footprint`, `contribution`, `wind`, `beacons` | `flux`, `fluxHi`, `srcFarming`, `srcWaste`, `srcFossil`, `factories`, `station`, `cities`, `graticule` |
+
+`showsStamp(stop)` is the rule, in `engine.js` beside `DEFAULT_LAYERS` and
+`FIGURE_SLOTS` and for the same reason: a closed set the suite can check, with
+the decision testable against synthetic stops and nothing mounted. `deck.js` is
+one line — `$('stamp').hidden = !showsStamp(stop)`.
+
+⚠ **Derived, not declared, because a forgotten flag looks exactly like a
+deliberate one.** `stamp: false` on every undated stop would be the
+layer-left-on bug in another channel: nothing on screen looks wrong when the next
+`sources` stop forgets it.
+
+⚠ **`beacons` is in the dated column although no stop lights it without a
+footprint.** The table says what a layer *means* — beacon levels are read per
+frame out of `series.json` — not which combinations exist today.
+
+What it hides, measured off the built decks:
+
+| deck | stops that lose the date |
+|---|---|
+| **rgl** | `where/0–5`, `sources/0–5` — 12 of 22 |
+| **gsn** | `where/0–3`, `sources/0–1` — 6 of 16 |
+| **cfc11** | `where/0–3`, `sources/0–1`, `answer/0` — 7 of 22 |
+
+Nothing flips the other way: no undated stop in any deck wanted a date back, so
+there is no `stamp: true` in the three beats files.
+
+An explicit `stamp` still wins, and **exactly one act in three decks uses it** —
+the beacon picks (§8), which are footprint stops that hide the date on purpose.
+That is what makes it an override rather than the mechanism.
+
+`.stamp` is absolutely positioned, so nothing moves when it goes — which matters
+on `record`, stepping nine frames a second. The hour is still on the scrubber
+behind `H` on every stop.
+
+**The suite**: three pure checks per deck in *cameras and layers* (a dated layer
+earns it, an undated one does not, an explicit flag beats both) and one aggregate
+in the headless mount, walking every slide and comparing `#stamp.hidden` against
+`showsStamp`. Aggregate rather than per-stop so the counts move by a stated
+number; the disagreeing stops are named in the check's detail.
+
 ---
 
 ## 6. The four exports
@@ -311,18 +382,22 @@ the CFC-11 deck's, and is not in that list.
 
 | page | deck | suite | state |
 |---|---|---|---|
-| `story.html` | *Can I smell it?* · Ridge Hill · CH₄ | 464 | **the finished one.** 6 acts, 19 slides — `story-deck-status.md` |
-| `story-gsn.html` | *What should we smell?* · Gosan · HFC-23 | 238 | ships. Inventory and plant list against the air |
-| `story-cfc11.html` | *Which one can we smell?* · Gosan · CFC-11 | 385 | **scaffold with a working beacon layer and five picks.** §8 |
+| `story.html` | *Can I smell it?* · Ridge Hill · CH₄ | 520, **3 red** | **the finished one.** 6 acts, 22 slides — `story-deck-status.md` |
+| `story-gsn.html` | *What should we smell?* · Gosan · HFC-23 | 242, green | ships. Inventory and plant list against the air |
+| `story-cfc11.html` | *Which one can we smell?* · Gosan · CFC-11 | 379 and climbing, **4 red** | **scaffold with a working beacon layer and five picks**, and pictures landing in it as this was written. §8 |
 
-**Ridge Hill's 464 is a fixture.** It has held through the engine split, the meter's
-third state, the beacon work, the picks and the pictures; every check added since
-is behind a gate that deck does not pass through. A change that moves it has reached further
-than it meant to.
+⚠ **Ridge Hill's 464 was a fixture and is retired.** It held through the engine
+split, the meter's third state, the beacon work, the picks and the pictures,
+because every check added in that time sat behind a gate that deck does not pass
+through. Two changes since went through the gate deliberately — the photographs
+on `where`, and the date rule (§5a), which is site-agnostic by design and changes
+what twelve Ridge Hill slides show. The count now stands at 520. Treat a *further*
+unexplained move the way 464 was treated; do not treat 520 as untouched history.
 
-CFC-11's number is the one that moves — 332 → 385 with the picks, and it moves
-again with every act that lands, since most of this suite is per-stop. It is a
-record of where the deck was, not a fixture like the 464.
+CFC-11's number was always the one that moves — 332 → 385 with the picks, and it
+moves with every act that lands, since most of this suite is per-stop. It is 365
+now: the deck lost checks between the 385 reading and this one, in commits this
+document did not follow.
 
 ---
 
@@ -442,13 +517,16 @@ hour and none is to be gone looking for — this is *"D keeps it a game"* above,
 showing up in the frames. 278 is the closest the record comes and is what the
 button uses.
 
-⚠ **The picks turn the date stamp off** (`stamp: false` on the stop; the default
-is on, and no other stop in any deck sets it). They span 4 June to 17 July —
-five different days, one per region, which is the act working as designed — and a
-date jumping between two buttons reads as the deck losing its place rather than
-as the point. The presenter is free to say "five different days" out loud, and
-the hour is still on the scrubber behind H. This does **not** close the
-chronology ⚠ in §13, which is about `clean-smell` running before `dirty`.
+⚠ **The picks turn the date stamp off** (`stamp: false` on the stop) — and this
+is **the only explicit `stamp` in three decks**. Everywhere else the date is
+derived from the layers (§5a), and these are footprint stops, so the rule says
+show. The act says don't: they span 4 June to 17 July, five different days, one
+per region, which is the act working as designed, and a date jumping between two
+buttons reads as the deck losing its place rather than as the point. The
+presenter is free to say "five different days" out loud, and the hour is still on
+the scrubber behind H. This does **not** close the chronology ⚠ in §13, which is
+about `clean-smell` running before `dirty` — two stops that both have air on them
+and both, correctly, still show a date.
 
 ⚠ **The five frames are not the ones the scaffold named.** `beacon_B` was 32
 (`1 2 0 0 0`), `beacon_C` 288 (`0 0 2 1 1`), `beacon_D` 310 (`0 0 2 2 0`),
@@ -507,11 +585,14 @@ reads. **Do not crop the scale off** — it is what makes it a measurement rathe
 than a picture of a blob.
 
 The stop has **no `t`**, so it rests on `f.clean` — 379, the frame `record` comes
-to rest on. The date of a four-year average means nothing, and the least a
-meaningless stamp can do is not change when the presenter presses the key. It
-carries **no footprint**, so the meter hides itself: a bar about one hour in June,
-beside an answer covering four years, is two claims at once and the smaller one
-wins the eye.
+to rest on. It carries **no footprint**, so two pieces of chrome take themselves
+off it. The meter hides itself: a bar about one hour in June, beside an answer
+covering four years, is two claims at once and the smaller one wins the eye. And
+the date goes with it, by the same rule (§5a) — the stop draws nothing dated, so
+it names no hour. That used to need arguing: the stamp said something meaningless
+about a four-year average, and the best that could be done was to keep it from
+*changing* when the presenter pressed a key. The rule removes it instead, and
+this stop is now an instance of the rule rather than a case it works around.
 
 ### The anchors, the bar and the wind
 
@@ -621,6 +702,9 @@ the tuning panel's reset and the per-species display window, at a cost of 6 KB.
 - **Colour is never the only channel.** Beacon states carry ring weight and radius
   as well as fill; the meter's "no reading" state carries diagonal hatching *and*
   the words, neither of them a hue, because grey is already the empty track.
+- **Chrome that makes a claim is on only where the claim holds.** The meter shows
+  where there is air on screen; the date shows where a dated layer is on, checked
+  three ways against `showsStamp` and once against the mounted deck (§5a).
 - **Playback must come to rest on a reading.** `from`, every `holdAt` and `to` are
   frames the deck stops on and talks over. Crossing blank hours mid-window is
   allowed — the meter can say "no reading" — and whether an anchored window
@@ -709,10 +793,12 @@ the tuning panel's reset and the per-species display window, at a cost of 6 KB.
   the acts still run clean-first, so the date stamp on screen goes backwards
   between `clean-smell` and `dirty`. Survivable in a scaffold, not shippable.
   Fixing it means reordering the acts or picking a clean day before 16 June — not
-  editing captions. ⚠ **Still open.** The picks hide the stamp on their own six
-  slides (§8) because five regions are five different days by design; that is a
-  narrow decision about one act and not a licence to hide the date wherever the
-  order is wrong.
+  editing captions. ⚠ **Still open, and the date rule does not touch it.** Both
+  stops have air on them, so both correctly keep their date (§5a) — the rule
+  removes dates that name nothing, not dates that name the wrong order. The picks
+  hide the stamp on their own five slides because five regions are five different
+  days by design; that is a narrow decision about one act and not a licence to
+  hide the date wherever the order is awkward.
 - ⚠ **`record` still crosses the 74-hour join at frame 324**, as does the HFC-23
   deck. The suite has no discontinuity check; adding one would cover all three
   decks at once.

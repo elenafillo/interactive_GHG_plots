@@ -125,6 +125,56 @@ export const DEFAULT_LAYERS = {
   beacons: 0,
 };
 
+/**
+ * Which layers mean *this hour*, and which are just there.
+ *
+ * The date in the corner is a claim, and on most stops of most decks it is the
+ * wrong one. `sources` shows an annual emissions guess with no air on screen;
+ * `where` shows an island and a graticule; the CFC-11 deck's last slide is a
+ * four-year average. All of them carried a date, and on all of them it named an
+ * hour that nothing on the map came from. Worse, it *changes* when the presenter
+ * nudges the scrubber, so a stop with nothing dated on it looks like it is
+ * responding to the clock.
+ *
+ * So the four layers below are the ones that come out of a particular frame --
+ * the footprint and its product with the emissions map, the wind field, and the
+ * beacon levels, which are read per frame out of `series.json`. Everything else
+ * in `DEFAULT_LAYERS` is geography or inventory: true all month, or true for a
+ * year, but not true *at 15:00*.
+ *
+ * ⚠ `beacons` is here even though no stop in any deck lights it without a
+ * footprint. The table is a statement about what a layer means, not a record of
+ * which combinations happen to exist today, and a beacons-only stop is an
+ * obviously reasonable thing to write.
+ *
+ * Same argument as `DEFAULT_LAYERS` and `FIGURE_SLOTS` for living here: it is a
+ * closed set the suite can check, and the decision is testable with nothing
+ * mounted.
+ */
+export const DATED_LAYERS = ['footprint', 'contribution', 'wind', 'beacons'];
+
+/**
+ * Does this stop show the date?
+ *
+ * The rule is the table above: a stop earns a date by having something dated on
+ * screen. Derived rather than declared, because the failure it replaces is the
+ * layer-left-on bug in another channel -- a stop that forgets `stamp: false` is
+ * indistinguishable from one that meant to show a date, and nothing on screen
+ * looks wrong.
+ *
+ * ⚠ **An explicit `stamp` still wins**, and one act needs it to. The CFC-11
+ * beacon picks are footprint stops, so the rule says show; the act's argument
+ * says don't, because the five regions are five different days by design and a
+ * date jumping between two buttons reads as the deck losing its place. That is a
+ * story decision about one act, which is exactly what an override is for -- and
+ * it is the *only* one in three decks, which is why it is an override rather
+ * than the mechanism.
+ */
+export function showsStamp(stop) {
+  if (stop.stamp !== undefined) return stop.stamp !== false;
+  return DATED_LAYERS.some((k) => stop.layers[k] > 0);
+}
+
 // ---------------------------------------------------------------------------
 // Figures
 // ---------------------------------------------------------------------------
