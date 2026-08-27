@@ -75,12 +75,31 @@ const server = createServer(async (req, res) => {
       res.writeHead(302, { location: `${pathname.replace(/\/?$/, '/')}${ENTRY}` });
       return res.end();
     }
+    // `no-cache` means "revalidate before reuse", and revalidating needs
+    // something to revalidate *against*. With no validator the browser had no
+    // choice but to download in full every time -- which made the deck's
+    // `<link rel="prefetch">` hand-off actively worse than nothing, pulling the
+    // next site's five megabytes down twice. The validator is size and mtime, so
+    // a re-export still invalidates it and the note below still holds.
+    const etag = `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
+    const lastModified = info.mtime.toUTCString();
+    const since = Date.parse(req.headers['if-modified-since'] || '');
+    const fresh = req.headers['if-none-match'] === etag
+      // HTTP dates have one-second resolution, so compare against a truncated
+      // mtime or a file saved mid-second looks newer than its own timestamp.
+      || (!Number.isNaN(since) && since >= Math.floor(info.mtimeMs / 1000) * 1000);
+    if (fresh) {
+      res.writeHead(304, { etag, 'last-modified': lastModified, 'cache-control': 'no-cache' });
+      return res.end();
+    }
     res.writeHead(200, {
       'content-type': TYPES[extname(target).toLowerCase()] || 'application/octet-stream',
       'content-length': info.size,
       // The atlas is megabytes and gets re-fetched on every reload otherwise,
       // but a stale asset after a re-export is worse than a slow reload.
       'cache-control': 'no-cache',
+      etag,
+      'last-modified': lastModified,
     });
     createReadStream(target).pipe(res);
   } catch {

@@ -442,6 +442,17 @@ SITES = {
             "uvMax": 37.0,
         },
         "out": "web/data-gsn-cfc11",
+        # What the map writes beside the station dot. Without this the label is
+        # the SITES key, and "GSN-CFC11" is a *dataset* name showing up where a
+        # sensor name belongs -- the deck already says which gas it is about in
+        # every caption, so the marker repeating it is noise, and it reads as a
+        # different instrument from the "GSN" on the HFC-23 deck's map when it
+        # is the same one on the same clifftop.
+        #
+        # The key, the output directory and the pages all stay "GSN-CFC11":
+        # they distinguish two exports of one station, which is a real
+        # distinction and not one to make the label carry.
+        "station_id": "GSN",
         "blurb": "Gosan on Jeju Island, watching CFC-11 over June and July 2016.",
     },
     "GSN-2021": {
@@ -1816,7 +1827,15 @@ def export_basemap(view, out_dir, simplify=0.02):
 
 
 def _station(cfg, site, fp_ds, obs_attrs):
-    """Station identity, taking whichever key set the observation file uses."""
+    """Station identity, taking whichever key set the observation file uses.
+
+    ``id`` is the SITES key unless the site overrides it with ``station_id``.
+    The two are the same thing for three of the four sites, and are not for
+    "GSN-CFC11": the key names one *export* of Gosan and the label names the
+    *sensor*, which is the same sensor the "GSN" export watches. The map writes
+    this id beside the station dot, so it is the one field here that the
+    audience reads.
+    """
     a = obs_attrs
     lat = a.get("station_latitude", a.get("inlet_latitude"))
     lon = a.get("station_longitude", a.get("inlet_longitude"))
@@ -1825,7 +1844,7 @@ def _station(cfg, site, fp_ds, obs_attrs):
         lon = float(fp_ds.release_lon.isel(time=0))
     inlet = a.get("inlet_height_magl")
     return {
-        "id": site,
+        "id": cfg.get("station_id", site),
         "name": str(a.get("station_long_name", site)),
         "lat": float(lat),
         "lon": float(lon),

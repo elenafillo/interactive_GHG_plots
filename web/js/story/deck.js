@@ -537,6 +537,10 @@ export async function mountDeck({ deck } = {}) {
     paintDots();
     paintPicks();
     paintChrome();
+    // Warm the next site once the presenter is on the slide the hand-off leaves
+    // from. Earlier would compete with this deck's own load; later is the pause
+    // it exists to remove.
+    if (i === slides.length - 1) warmNext();
     dirty = true;
   }
 
@@ -544,8 +548,85 @@ export async function mountDeck({ deck } = {}) {
     i = Math.max(0, Math.min(slides.length - 1, k));
     enter();
   }
-  const next = () => { if (i < slides.length - 1) go(i + 1); };
+  // ---- the hand-off -----------------------------------------------------
+  /**
+   * Where `→` goes off the last slide.
+   *
+   * A deck spec may name the page that follows it -- `next: { href, prefetch }`
+   * -- and Ridge Hill names the CFC-11 deck. A spec with `next: null` clamps on
+   * its last slide, which is what all three decks did before this and what the
+   * two Gosan decks still do.
+   *
+   * Two things make this safe to hang off the key a presenter is already
+   * leaning on:
+   *
+   *   - **It fires once.** `handedOff` latches, so a held arrow or an
+   *     over-eager clicker cannot start the navigation twice, and cannot start
+   *     it again while the browser is already tearing this page down.
+   *   - **The next site is warm by then.** `warmNext` runs on entering the last
+   *     slide, so the megabytes arrive during the closing sentence rather than
+   *     in the silence after it.
+   *
+   * ⚠ **The query string is deliberately dropped.** `?data=` names *this*
+   * deck's export, and carrying it across would open the CFC-11 page on Ridge
+   * Hill's data -- everything would load, every caption would be wrong, and
+   * nothing would throw. `?tune=1` goes with it rather than special-casing one
+   * parameter out of two.
+   */
+  const handOff = deck.next || null;
+  let handedOff = false;
+
+  const next = () => {
+    if (i < slides.length - 1) { go(i + 1); return; }
+    if (!handOff || handedOff) return;
+    handedOff = true;
+    location.href = handOff.href;
+  };
   const prev = () => { if (i > 0) go(i - 1); };
+
+  /**
+   * Ask the browser for the next deck's page and everything it will decode.
+   *
+   * The same bargain `preloadFigures` makes, one page further out: not awaited,
+   * and failure is silent, because a hand-off that is merely slow is a better
+   * failure than a deck that throws on its last slide.
+   *
+   * `rel="prefetch"` rather than `fetch`, because it is the low-priority
+   * idle-time channel -- warming five megabytes must not starve the render loop
+   * of the deck still on screen.
+   *
+   * The raster filenames are not guessable: they are named in the next site's
+   * own `meta.json`, so that is read first and the files it names are warmed
+   * after it. The three JSONs are the only fixed names, and are exactly the
+   * three `data.js` opens with.
+   */
+  let warmed = false;
+  async function warmNext() {
+    if (warmed || !handOff || !handOff.prefetch) return;
+    warmed = true;
+    const head = document.head;
+    if (!head) return;              // the headless suite mounts without one
+    const dir = handOff.prefetch.endsWith('/') ? handOff.prefetch : `${handOff.prefetch}/`;
+    const warm = (url) => {
+      const link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.href = url;
+      head.appendChild(link);
+    };
+    warm(handOff.href);
+    for (const f of ['meta.json', 'series.json', 'basemap.json']) warm(dir + f);
+    try {
+      const meta = await fetch(dir + 'meta.json').then((r) => (r.ok ? r.json() : null));
+      if (!meta) return;
+      // Everything `loadData` goes on to ask for. The footprint atlas and the
+      // two wind planes are the megabytes; the flux rasters are rounding error
+      // and are listed anyway, so this cannot drift from data.js by omission.
+      if (meta.flux) warm(dir + meta.flux.file);
+      for (const l of Object.values((meta.fluxHires && meta.fluxHires.layers) || {})) warm(dir + l.file);
+      warm(dir + meta.footprint.atlas.file);
+      if (meta.wind) { warm(dir + meta.wind.atlas.u); warm(dir + meta.wind.atlas.v); }
+    } catch { /* a cold hand-off is slow, not broken */ }
+  }
 
   // ---- retiming ---------------------------------------------------------
   /**

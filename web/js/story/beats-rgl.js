@@ -237,11 +237,19 @@ export const DECK = {
   smell: SMELL,
   releases: RELEASES,
   flags: { showRecordLow: SHOW_RECORD_LOW, showDirtyBacktrack: SHOW_DIRTY_BACKTRACK },
-  // Where `→` goes off the last slide. Still null: `story-gsn.html` does not
-  // exist yet, and a deck that navigates to a 404 on its final keypress is a
-  // worse failure than one that clamps. Set to
-  // `{ href: 'story-gsn.html', prefetch: 'data-gsn/' }` when that page ships.
-  next: null,
+  // Where `→` goes off the last slide, and the only deck that names one.
+  //
+  // The CFC-11 deck rather than the HFC-23 one, which is a story decision and
+  // not an alphabetical one: `record` leaves this deck on "a little on Sunday,
+  // a lot on Friday", and the page that should follow it is the one that asks
+  // *which direction* the smelly air came from. The HFC-23 deck answers a
+  // different question -- what the inventory says we should smell -- and stands
+  // on its own at `story-gsn.html`.
+  //
+  // `prefetch` is the next site's export directory. `deck.js` warms the page
+  // and every raster named in that site's `meta.json` when the presenter
+  // reaches the last slide, so the 5 MB lands during the closing sentence.
+  next: { href: 'story-cfc11.html', prefetch: 'data-gsn-cfc11/' },
   acts,
 };
 
@@ -295,7 +303,7 @@ function acts(f, {
           images: [
             {
               src: 'img/rgl/ridge_hill_mast_angelina.jpg',
-              at: 'left-of-centre',
+              at: 'right',
               size: 'lg',
               alt: 'The Ridge Hill TV station, where the measurement is',
             },
@@ -308,26 +316,33 @@ function acts(f, {
           images: [
             {
               src: 'img/rgl/ridge_hill_mast_angelina.jpg',
-              at: 'left-of-centre',
+              at: 'right',
               size: 'lg',
               alt: 'The Ridge Hill TV station, where the measurement is',
             },
             {
               src: 'img/rgl/ridge_hill_cows.jpg',
-              at: 'right',
+              at: 'left',
               size: 'lg',
               alt: 'Cows near the Ridge Hill TV station',
             },
           ],
         },
         {
-          caption: 'Researchers set up the towers',
+          caption: 'Researchers set up the stations',
           camera: { lon: -3.0, lat: 52.0, span: 25 },
           layers: { cities: 1 },
           images: [
             {
+              src: 'img/rgl/acrg_mast.jpeg',
+              at: 'left',
+              size: 'lg',
+              alt: 'Three people in high vis jackets pose in front of a mast',
+            },
+            {
               src: 'img/rgl/angelina_setup.jpg',
-              size: 'card',
+              at: 'right',
+              size: 'lg',
               alt: 'Two people inspecting a sensor',
             },
           ],
@@ -482,25 +497,54 @@ function acts(f, {
       // of Silesia -- the eastern limit this card was framed to exclude.
       stops: [
         {
-          caption: 'Purple is where methane comes from.',
+          caption: 'But where does it come from?',
           camera: { lon: -0.5, lat: 52.5, span: 24 },
-          layers: { fluxHi: 0.92, cities: 1 },
+          layers: { cities: 1 },
         },
         {
-          // The load-bearing line of the whole deck.
-          caption: 'But nobody counted it. This is a guess.',
-          camera: { lon: -0.5, lat: 52.5, span: 24 },
-          layers: { fluxHi: 0.92, cities: 1 },
-        },
-        {
-          caption: 'Most of it is cows and farms.',
+          caption: 'Most of it is farms.',
           camera: { lon: -0.5, lat: 52.5, span: 24 },
           layers: { srcFarming: 0.95, cities: 1 },
+        },
+        {
+          caption: 'Specially cows...',
+          camera: { lon: -0.5, lat: 52.5, span: 24 },
+          layers: { srcFarming: 0.95, cities: 1 },
+          images: [
+            {
+              src: 'img/rgl/cows.png',
+              at: 'top-left',
+              size: 'lg',
+              alt: 'Generic image of cows',
+            },
+          ],
+        },
+        {
+          caption: 'Then rubbish dumps and sewage works.',
+          camera: { lon: -0.5, lat: 52.5, span: 24 },
+          layers: { srcWaste: 0.95, cities: 1 }, 
         },
         {
           caption: 'Then rubbish dumps and sewage works.',
           camera: { lon: -0.5, lat: 52.5, span: 24 },
           layers: { srcWaste: 0.95, cities: 1 },
+          images: [
+            {
+              src: 'img/rgl/landfill.png',
+              at: 'top-left',
+              size: 'lg',
+              alt: 'Generic image of landfill',
+            },
+          ],    
+        },
+        {
+          // Leaking and burning are one colour and two sentences: gas escaping
+          // from pipes and wells, and gas surviving a flame. Saying it beats
+          // drawing it -- a fourth colour would split the picture without
+          // making the difference any more visible.
+          caption: 'And gas that leaks, or gets burnt.',
+          camera: { lon: -0.5, lat: 52.5, span: 24 },
+          layers: { srcFossil: 0.95, cities: 1 }, 
         },
         {
           // Leaking and burning are one colour and two sentences: gas escaping
@@ -510,13 +554,27 @@ function acts(f, {
           caption: 'And gas that leaks, or gets burnt.',
           camera: { lon: -0.5, lat: 52.5, span: 24 },
           layers: { srcFossil: 0.95, cities: 1 },
+          images: [
+            {
+              src: 'img/rgl/oil.png',
+              at: 'top-left',
+              size: 'lg',
+              alt: 'An oil rig',
+            },
+          ],    
         },
         {
           // The three back together. Swap these three alphas for one and this
           // becomes a fourth single-family stop instead; nothing else changes.
-          caption: 'Cows, rubbish, and gas. All of it guessed.',
+          caption: 'We can add up each sector',
           camera: { lon: -0.5, lat: 52.5, span: 24 },
           layers: { srcFarming: 0.9, srcWaste: 0.9, srcFossil: 0.9, cities: 1 },
+        },
+        {
+          // The load-bearing line of the whole deck.
+          caption: 'And in general, we can make some good guesses',
+          camera: { lon: -0.5, lat: 52.5, span: 24 },
+          layers: { fluxHi: 0.92, cities: 1 },
         },
       ],
     },
@@ -619,7 +677,6 @@ function acts(f, {
         },
       ],
     },
-
     {
       id: 'record',
       title: 'How much can we smell?',
@@ -633,15 +690,15 @@ function acts(f, {
       chart: false,
       stops: [
         {
-          caption: 'A little on Sunday. A lot on Friday.',
+          caption: '',
           // span 34 ran off the northern edge of the data on a 4:3 screen -- a
           // thin empty band along the top of the month's playback. 30 clears it
           // at both 16:9 and 4:3 and still holds the Atlantic and Europe.
           camera: { lon: -6, lat: 52, span: 30 },
           layers: { footprint: 1 },
           play: {
-            from: 0, to: 'end', stepsPerSec: 9,
-            holdAt: showRecordLow ? ['clean', 'dirty', 'recordLow'] : ['clean', 'dirty'],
+            from: 50, to: 200, stepsPerSec: 9,
+            /* holdAt: showRecordLow ? ['clean', 'dirty', 'recordLow'] : ['clean', 'dirty'], */
           },
         },
       ],
