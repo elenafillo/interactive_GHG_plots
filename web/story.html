@@ -32,6 +32,13 @@ if (location.protocol === 'file:') {
 <main class="stage">
   <canvas id="map" aria-label="Map showing where the air at Ridge Hill came from"></canvas>
 
+  <!-- Still pictures a stop asks for -- the mast, the inlet. Filled by deck.js
+       from the stop's `images`, empty on every stop that names none, which is
+       every stop of this deck today. It is here rather than only on the page
+       that uses it because all three decks share deck.js and it looks this id
+       up by name. -->
+  <div class="figures" id="figures"></div>
+
   <!-- Progress through the acts. Buttons, so it is navigable without the keys. -->
   <nav class="dots" id="dots" aria-label="Slides"></nav>
 

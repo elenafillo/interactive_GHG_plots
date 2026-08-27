@@ -44,8 +44,27 @@ if (location.protocol === 'file:') {
 <main class="stage">
   <canvas id="map" aria-label="Map showing where the air at Gosan came from"></canvas>
 
+  <!-- Still pictures a stop asks for -- see the note on the same tag in
+       story.html. This is the deck that actually uses it: the clifftop stop in
+       `beats-cfc11.js` puts the mast beside the station. -->
+  <div class="figures" id="figures"></div>
+
   <!-- Progress through the acts. Buttons, so it is navigable without the keys. -->
   <nav class="dots" id="dots" aria-label="Slides"></nav>
+
+  <!-- The beacon game's five letters, top-centre. This page only: the other two
+       decks share deck.js and have no act that declares picks, and the code
+       guards for the element being absent.
+
+       Top-centre is the one free edge — the meter owns top-left, .dots and .nav
+       top-right, the caption bottom-left, the stamp bottom-right. It is shared
+       with .pill, which cannot collide with it: .pill shows only on a stop that
+       needs wind, and the act these belong to carries none (DOMAIN reaches past
+       the eastern edge of the met store — see the beats file).
+
+       Built by paintPicks() and hidden on every slide that declares no picks,
+       which is every slide but six. -->
+  <nav class="picks" id="picks" aria-label="Regions" hidden></nav>
 
   <p class="pill" id="pill" hidden>wind animation — coming in part two</p>
 

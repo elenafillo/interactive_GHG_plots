@@ -25,7 +25,7 @@ import { TimeSeries } from '../timeseries.js';
 import { WindLayer, viewFromCamera } from '../wind.js';
 import { C, sourceDisplayFor, footprintLUT } from '../palette.js';
 import { MapView } from './mapview.js';
-import { resolveFrames, buildDeck, toSlides, resolvePlay } from './engine.js';
+import { resolveFrames, buildDeck, toSlides, resolvePlay, resolveFigures, pickTargets } from './engine.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -245,6 +245,155 @@ export async function mountDeck({ deck } = {}) {
     });
   }
 
+  // ---- picks ------------------------------------------------------------
+  //
+  // A row of letters that jump straight to a named stop, for an act meant to be
+  // run in the room's order rather than the file's. The presenter asks which
+  // region to look at first and clicks it; the camera does not move, so only the
+  // hour changes and the map answers.
+  //
+  // Everything a pick needs already existed -- `go(k)` sets the frame, the
+  // framing, the layers and the bar. What was missing was a way to reach stop
+  // *k* out of order, and that is all this is.
+
+  /** Which picks have been shown. Survives leaving the act and coming back. */
+  const visited = new Set();
+
+  /**
+   * The buttons on screen right now, resolved. Read by the headless suite.
+   *
+   * Same reason `figures` is exposed: `appendChild` is a no-op in the stub, so
+   * the elements themselves are unobservable and a row that stopped being built
+   * would look exactly like a slide with no picks on it.
+   */
+  let picks = [];
+
+  /**
+   * Paint the row for this slide, if it declares one.
+   *
+   * **On every stop of the act, not only the chooser.** After region A you click
+   * B directly rather than walking back to a menu, and the row doubles as the
+   * record of which ones the room has already been shown.
+   *
+   * ⚠ **The label is the letter and nothing else.** It comes off the stop's own
+   * `id`, so there is no second place for the text to drift from the letters
+   * `_drawBeacons` puts on the boxes. A place name on a button during the game
+   * is the answer, and text on screen is text on screen whether it was drawn on
+   * the canvas or not -- the suite checks both against `meta.beacons`.
+   *
+   * ⚠ **`$('picks')` may be null.** Two other pages share this file and neither
+   * has the element; a missing tag is also exactly what the headless suite
+   * cannot see, since its `getElementById` conjures any id it is asked for.
+   */
+  function paintPicks() {
+    const stop = slides[i];
+    const targets = stop.picks ? pickTargets(slides, stop.picks) : [];
+    // Marked on arrival, and only where the slide we are on is itself a pick --
+    // the chooser declares the row without being on it. The one you are looking
+    // at reads as done as well as current: the row is a record of where the room
+    // has been, and it has been here.
+    if (targets.includes(i)) visited.add(i);
+    picks = targets.map((target) => ({
+      // `pick-C` -> `C`. Anything else keeps its id, which would show up on
+      // screen as a wrong-looking button rather than as a missing one.
+      label: String(slides[target].id).replace(/^pick-/, ''),
+      target,
+      on: target === i,
+      done: visited.has(target),
+    }));
+
+    const el = $('picks');
+    if (!el) return;
+    el.hidden = picks.length === 0;
+    el.innerHTML = '';
+    for (const p of picks) {
+      const b = document.createElement('button');
+      b.className = `pick${p.on ? ' on' : ''}${p.done ? ' done' : ''}`;
+      b.textContent = p.label;
+      // The visible label is one letter, so the button needs to say what it is
+      // for out loud. "Region C" is what the presenter would call it, and it
+      // gives away no more than the map already shows.
+      b.setAttribute('aria-label', `Region ${p.label}`);
+      b.setAttribute('aria-current', p.on ? 'true' : 'false');
+      b.addEventListener('click', () => go(p.target));
+      el.appendChild(b);
+    }
+  }
+
+  // ---- figures ----------------------------------------------------------
+  //
+  // Still pictures a stop can put on the stage: a photograph of the mast, the
+  // inlet, the instrument in its hut. **DOM images over the canvas, not drawn
+  // into it**, for three reasons that all point the same way. `mapview.js` is
+  // already a deliberate fork of the explorer's and stays byte-comparable
+  // against it; the render loop repaints every frame while the wind is running,
+  // so a canvas blit would re-draw a photograph sixty times a second to no
+  // effect; and the browser's own decode, aspect fit and cache are free here and
+  // would all have to be written by hand there.
+  //
+  // The one case this is the wrong shape is a picture pinned to a **place** --
+  // an image at a lon/lat that grows as the camera pushes in. That is a map
+  // layer, belongs in the fork beside `_drawBeacons`, and is not this.
+
+  /** The pictures on screen right now, resolved. Read by the headless suite. */
+  let figures = [];
+
+  /**
+   * Ask the browser for every picture the deck will ever show, once, at mount.
+   *
+   * Not awaited, and deliberately: a deck that will not start because a
+   * photograph is missing is a worse failure than one that shows a slide with a
+   * gap in it, and this runs while the presenter is still on the title slide
+   * either way. What it buys is that no image decodes *during* a sentence --
+   * a JPEG arriving three frames late is a flash of empty stage in the middle
+   * of the one act it was added for.
+   *
+   * The `Image` objects are held in the map so nothing can collect them before
+   * the browser has cached the decode.
+   */
+  const figureCache = new Map();
+  function preloadFigures() {
+    const srcs = new Set();
+    for (const s of slides) for (const fig of resolveFigures(s)) srcs.add(fig.src);
+    for (const src of srcs) {
+      if (figureCache.has(src)) continue;
+      const img = new Image();
+      img.src = src;
+      figureCache.set(src, img);
+    }
+    return figureCache.size;
+  }
+  preloadFigures();
+
+  /**
+   * Put this stop's pictures on the stage.
+   *
+   * Rebuilt per stop rather than shown and hidden, which is the same bargain
+   * `enter` already makes with the layer table: a stop lists what it has, and
+   * nothing can be left behind three slides later. The cost is one element
+   * creation per picture per slide change, against a deck that changes slide
+   * when somebody presses a key.
+   *
+   * Placement is a class, so the stylesheet owns every number. See
+   * `FIGURE_SLOTS` in engine.js for why it is a name and not a coordinate.
+   */
+  function paintFigures(stop) {
+    const box = $('figures');
+    figures = resolveFigures(stop);
+    if (!box) return;
+    box.innerHTML = '';
+    for (const fig of figures) {
+      const el = document.createElement('img');
+      el.className = `fig fig-${fig.at} fig-${fig.size}`;
+      el.src = fig.src;
+      // Empty rather than absent when a beat gives none: an unlabelled picture
+      // should read as decoration to a screen reader, not as an unnamed thing.
+      // The suite makes the beats files give one anyway.
+      el.alt = fig.alt || '';
+      box.appendChild(el);
+    }
+  }
+
   /**
    * What the bar says about an hour the instrument does not have.
    *
@@ -300,6 +449,20 @@ export async function mountDeck({ deck } = {}) {
     const stop = slides[i];
     $('caption').textContent = stop.caption;
     $('stamp').textContent = stamp(state.t);
+    /**
+     * A stop may turn the date off, and one act needs to.
+     *
+     * The beacon picks are five different days -- one per region, because those
+     * are the hours the record says each region is being smelled -- and the
+     * audience jumps between them in whatever order the room asks for. With the
+     * date on screen that reads as the deck losing its place; the stamp is the
+     * one piece of chrome that would be *saying* something the act does not
+     * mean. Written every paint rather than toggled once, like everything else
+     * here, so re-entering a slide cannot leave it in the other state.
+     *
+     * Default is on: `stamp` is undefined on every other stop in every deck.
+     */
+    $('stamp').hidden = stop.stamp === false;
     // A stop whose animation is not built yet still shows its framing, and says
     // so, rather than being silently dropped from the running order.
     const missing = stop.needs.includes('wind') && !hasWind;
@@ -353,6 +516,7 @@ export async function mountDeck({ deck } = {}) {
     const stop = slides[i];
     map.flyTo(stop.camera);
     Object.assign(map.layers, stop.layers);
+    paintFigures(stop);
 
     const chart = !!stop.chart;
     $('chartShell').hidden = !chart;
@@ -372,6 +536,7 @@ export async function mountDeck({ deck } = {}) {
     else setT(state.t);
 
     paintDots();
+    paintPicks();
     paintChrome();
     dirty = true;
   }
@@ -617,8 +782,21 @@ export async function mountDeck({ deck } = {}) {
       if (document.fullscreenElement) document.exitFullscreen();
       else document.documentElement.requestFullscreen().catch(() => {});
     } else if (k >= '1' && k <= '9') {
-      const ai = Number(k) - 1;
-      const first = slides.findIndex((s) => s.actIndex === ai);
+      /**
+       * ⚠ **On a slide that declares picks, 1-5 are the picks** -- and there
+       * only. Everywhere else in every deck they are still the act jumps they
+       * have always been, which is why this shadows rather than rebinds: the
+       * alphabet is nearly all spoken for (`e`/`w`/`g`/`n`/`r`/`t`/`h`/`f` are
+       * bound above) and a global pick key would have cost an act jump on three
+       * decks to serve one act on one.
+       *
+       * A presentation clicker sends arrows and nothing else, so this is a
+       * convenience for whoever is at the keyboard. Clicking is the primary
+       * path and the linear order still reads on its own.
+       */
+      const n1 = Number(k) - 1;
+      if (picks[n1]) { go(picks[n1].target); return; }
+      const first = slides.findIndex((s) => s.actIndex === n1);
       if (first >= 0) go(first);
     } else return;
   });
@@ -642,6 +820,16 @@ export async function mountDeck({ deck } = {}) {
   return {
     data, map, ts, state, slides, hasWind, windLayer,
     get frames() { return frames; },
+    // What is on the stage beside the map. Exposed for the same reason `index`
+    // is: the suite stubs `appendChild` to a no-op, so the elements themselves
+    // are unobservable, and a picture that stopped being mounted would look
+    // exactly like a deck with no pictures in it.
+    get figures() { return figures; },
+    // The letter buttons this slide offers, and where each one lands. Exposed
+    // for the same reason as `figures`, and for one more: the suite has to be
+    // able to read the *labels*, because "no button says Shandong" is a claim
+    // about the text on screen and the elements are not observable.
+    get picks() { return picks; },
     // Which slide is showing. Read-only, and exposed so the headless suite can
     // check that a key press actually moved the deck rather than just not
     // throwing -- `go` is callable from a test, but the key bindings are what a

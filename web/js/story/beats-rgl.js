@@ -262,11 +262,6 @@ function acts(f, {
           layers: { station: 0, graticule: 1, cities: 1 },
         },
         {
-          caption: 'Forty kilometres north, a mast sniffs the air.',
-          camera: { lon: -2.54, lat: 51.997, span: 0.9 },
-          layers: { station: 1, graticule: 1, cities: 1 },
-        },
-        {
           // Out from 15, then out again to 25 -- and *down*, which is the half
           // that matters. Widening alone would have spent most of the new room
           // on the Norwegian Sea, so the centre drops with it: at 15 the frame
@@ -294,7 +289,62 @@ function acts(f, {
           // laptop can still run off the top of the map in a 4:3 hall, and the
           // gap between the two aspects is wide enough to hide it. The suite
           // checks both, so it fails there rather than on the night.
-          caption: 'It can smell for hundreds of miles.',
+          caption: 'Forty kilometres north, there is a sensor.',
+          camera: { lon: -3.0, lat: 52.0, span: 25 },
+          layers: { cities: 1 },
+          images: [
+            {
+              src: 'img/rgl/ridge_hill_mast_angelina.jpg',
+              at: 'left-of-centre',
+              size: 'lg',
+              alt: 'The Ridge Hill TV station, where the measurement is',
+            },
+          ],
+        },
+        {
+          caption: '',
+          camera: { lon: -3.0, lat: 52.0, span: 25 },
+          layers: { cities: 1 },
+          images: [
+            {
+              src: 'img/rgl/ridge_hill_mast_angelina.jpg',
+              at: 'left-of-centre',
+              size: 'lg',
+              alt: 'The Ridge Hill TV station, where the measurement is',
+            },
+            {
+              src: 'img/rgl/ridge_hill_cows.jpg',
+              at: 'right',
+              size: 'lg',
+              alt: 'Cows near the Ridge Hill TV station',
+            },
+          ],
+        },
+        {
+          caption: 'Researchers set up the towers',
+          camera: { lon: -3.0, lat: 52.0, span: 25 },
+          layers: { cities: 1 },
+          images: [
+            {
+              src: 'img/rgl/angelina_setup.jpg',
+              size: 'card',
+              alt: 'Two people inspecting a sensor',
+            },
+          ],
+        },
+        {
+          caption: 'And they interpret the data',
+          camera: { lon: -3.0, lat: 52.0, span: 25 },
+          layers: { cities: 1 },
+          images: [
+            {
+              src: 'img/rgl/sam_analysis.jpg',
+              size: 'card',
+              alt: 'Person looks at a computer next to a blue machine',
+            },
+          ],
+        },
+        {
           camera: { lon: -3.0, lat: 52.0, span: 25 },
           layers: { cities: 1 },
         },

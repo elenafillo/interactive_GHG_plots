@@ -125,6 +125,80 @@ export const DEFAULT_LAYERS = {
   beacons: 0,
 };
 
+// ---------------------------------------------------------------------------
+// Figures
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a still picture may sit on the stage.
+ *
+ * A **closed set of named slots**, not x/y, and that is the whole design. The
+ * deck's chrome already owns fixed regions -- the caption bottom-left, the meter
+ * mid-right, the date bottom-right, the presenter panel across the bottom half
+ * of the screen -- and a pair of coordinates in a beats file knows about none of
+ * them. It would land on one of them the first time the deck met a projector
+ * with a different aspect. A slot is a placement the stylesheet can honour on
+ * any screen, and a name the suite can check.
+ *
+ * Two families:
+ *
+ *   - **Frame-relative** -- `top-left`, `top-right`, `left`, `right` -- pinned to
+ *     the edge of the map, out of the way of whatever is on it.
+ *   - **Centre-relative** -- `left-of-centre` and its three siblings -- pinned to
+ *     the *middle of the map*, which is the point the camera centres on. On a
+ *     stop framed at `CLIFF` that is the station itself, so `right-of-centre` is
+ *     "beside the sensor" and stays beside it on any screen. They clear the
+ *     centre by `--fig-gap` so the subject is never underneath the picture.
+ *
+ * And `card`, which is the case where the picture *is* the slide.
+ *
+ * ⚠ Lives here rather than in the stylesheet because the stylesheet cannot fail
+ * a typo. `fig-top-rigth` is a class that matches no rule, so the image draws at
+ * the container's origin -- top left, over the map, silently. The suite checks
+ * every `at` against this list for the same reason it checks every layer name
+ * against `DEFAULT_LAYERS`.
+ */
+export const FIGURE_SLOTS = [
+  'top-left', 'top-right', 'left', 'right',
+  'left-of-centre', 'right-of-centre', 'above-centre', 'below-centre',
+  'card',
+];
+
+/**
+ * How big, as three steps rather than a length.
+ *
+ * Same argument as the slots: a beats file has no business naming pixels, and
+ * three named sizes are what the stylesheet can hold against a caption whose own
+ * type is a `clamp`.
+ */
+export const FIGURE_SIZES = ['sm', 'md', 'lg'];
+
+/**
+ * Slot and size are not independent, and two pairs collide with chrome.
+ *
+ * `below-centre` grows toward the caption and `right-of-centre` toward the
+ * meter, so at `lg` either can reach something that must never be covered -- the
+ * caption is the one thing on screen that has to survive a bright hall. Both
+ * are fine at `sm` and `md`, which is why this is a pair rule rather than a
+ * shorter list of slots.
+ */
+export const CROWDED_SLOTS = ['below-centre', 'right-of-centre'];
+
+/** Top-right at a middling size: out of the way, and big enough to read. */
+export const DEFAULT_FIGURE = { at: 'top-right', size: 'md' };
+
+/**
+ * A stop's pictures, with the defaults filled in.
+ *
+ * Pure, so the suite can ask what a stop draws without mounting anything -- the
+ * same reason every other decision in this file is here rather than in
+ * `deck.js`. A stop with no `images` draws none, which is every stop of two of
+ * the three decks.
+ */
+export function resolveFigures(stop) {
+  return (stop.images || []).map((fig) => ({ ...DEFAULT_FIGURE, ...fig }));
+}
+
 /**
  * Build a deck from its spec.
  *
@@ -200,13 +274,56 @@ export function resolvePlay(play, { anchor, frames, nTime, stepHours = 1 }) {
   };
 }
 
-/** Flatten acts to the linear list the right-arrow key walks. */
+/**
+ * Flatten acts to the linear list the right-arrow key walks.
+ *
+ * ⚠ **`anchor` falls back to the act's rather than replacing it.** This wrote
+ * `act.anchor` unconditionally, which silently threw away a stop-level one --
+ * and the failure is invisible rather than loud: `[` and `]` on such a stop
+ * would nudge the *act's* moment, redraw nothing, and leave the presenter
+ * pressing a key that appears dead while quietly moving another slide's hour.
+ * The beacons act is the case that found it: anchored on `clean`, with five
+ * stops that each name their own hour outright. No stop in any deck declares an
+ * `anchor` today, so every existing slide resolves exactly as before.
+ */
 export function toSlides(acts) {
   const out = [];
   acts.filter((a) => a.enabled).forEach((act, ai) => {
     act.stops.forEach((stop, si) => {
-      out.push({ ...stop, actId: act.id, actTitle: act.title, actIndex: ai, stopIndex: si, anchor: act.anchor, chart: !!act.chart });
+      out.push({ ...stop, actId: act.id, actTitle: act.title, actIndex: ai, stopIndex: si, anchor: stop.anchor ?? act.anchor, chart: !!act.chart, picks: act.picks || null });
     });
   });
   return out;
+}
+
+/**
+ * Where an act's `picks` point, as indices into the flat slide list.
+ *
+ * An act can name a handful of its own stops by `id` and say "these are
+ * reachable out of order" -- the beacon game's five regions, where the
+ * presenter asks the room which one to look at and clicks it. Everything else a
+ * pick needs (the frame, the camera, the beacon states, the bar) already
+ * follows from `go(i)`, so a pick is nothing more than a slide index with a
+ * button in front of it.
+ *
+ * Here rather than in `deck.js` because this half has no DOM and no canvas,
+ * which is what lets the suite assert "every button on screen lands on a real
+ * slide" without mounting anything. A dead button is the one failure that would
+ * otherwise surface in front of an audience: it looks perfectly fine until it
+ * is pressed.
+ *
+ * ⚠ **Throws rather than skipping a name it cannot find.** A silently dropped
+ * pick is four buttons where the deck promised five, and the letters would
+ * quietly shift along the row -- so the button labelled D would run C's hour.
+ * Failing at mount puts it in the console before the room is in the seats.
+ *
+ * @param {object[]} slides  the output of `toSlides`
+ * @param {string[]} picks   stop ids, in the order the buttons are to read
+ */
+export function pickTargets(slides, picks = []) {
+  return picks.map((id) => {
+    const k = slides.findIndex((s) => s.id === id);
+    if (k < 0) throw new Error(`story: pick "${id}" names no stop`);
+    return k;
+  });
 }

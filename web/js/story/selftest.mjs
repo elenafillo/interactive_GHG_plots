@@ -41,6 +41,7 @@ import zlib from 'node:zlib';
 import {
   MAX_CAPTION_WORDS, BANNED_WORDS, countWords, bannedIn,
   resolveFrames as resolveFramesWith, buildDeck, toSlides, resolvePlay, DEFAULT_LAYERS,
+  FIGURE_SLOTS, FIGURE_SIZES, CROWDED_SLOTS, resolveFigures, pickTargets,
 } from './engine.js';
 import { DECK as RGL } from './beats-rgl.js';
 import { DECK as GSN } from './beats-gsn.js';
@@ -148,6 +149,14 @@ const SITES = [
     },
     /** The deck argues from an emissions inventory, so the export must carry one. */
     expectSources: true,
+    /**
+     * No stop here puts a picture on the stage, so the whole figures section is
+     * skipped rather than passed. ⚠ This flag is what keeps this deck at **464
+     * checks** -- see rule 1 at the top. Every figure check is written per
+     * *picture*, so a deck with none would add none even without the flag; the
+     * flag is what stops "this deck has pictures" being asserted here at all.
+     */
+    expectImages: false,
     /** The deck's acts include stops gated `needs: ['wind']`. */
     expectWind: true,
     /** And this export carries the atlases those stops draw from. */
@@ -203,6 +212,8 @@ const SITES = [
      * suite start demanding the raster.
      */
     expectSources: false,
+    /** No pictures on this deck's stops either. See Ridge Hill's note. */
+    expectImages: false,
     /**
      * ⚠ **These two were one flag, and the second deck is what pulled them
      * apart.** While Gosan had no wind acts written, "the deck has wind stops"
@@ -264,6 +275,25 @@ const SITES = [
     dir: 'web/data-gsn-cfc11',
     engine: false,
     /**
+     * The page this deck is actually served from.
+     *
+     * ⚠ **Here because the DOM stub cannot see a missing tag.** `byId` builds an
+     * element on demand for any id it is asked for, so a `#picks` absent from
+     * the real HTML passes every headless check in this file and breaks only in
+     * front of a projector. There is no browser automation here, so the only
+     * thing that can catch it is reading the page as text.
+     */
+    page: 'story-cfc11.html',
+    /**
+     * The beacon game's five letter buttons, and the only act in any deck that
+     * can be run out of order.
+     *
+     * An expectation rather than a fact read off the beats file, for the same
+     * reason `expectImages` is one: if the `picks` list ever falls out of
+     * `beats-cfc11.js` the suite has to fail, not quietly stop checking.
+     */
+    expectPicks: true,
+    /**
      * KST, like Gosan's. Two moments, not three -- and note the order: the
      * **clean day is nine days after the dirty one**, which is a break with
      * both other decks and the reason `beats-cfc11.js` may not say "six days
@@ -304,6 +334,15 @@ const SITES = [
      *    turns `fluxHi` on has to be flown in far enough to see it.
      */
     expectHiResFlux: true,
+    /**
+     * The only deck with pictures on it, and the reason the machinery exists.
+     *
+     * An expectation rather than a fact read off the beats file, for the same
+     * reason `expectSources` is: if `beats-cfc11.js` ever loses its `images`,
+     * the suite must fail rather than skip. A check that passes by being
+     * skipped is the failure mode a gate is most likely to introduce.
+     */
+    expectImages: true,
     /**
      * True since the prior landed. The failure this guards against is not a
      * crash: an encoding window that misses the field paints one flat byte
@@ -508,6 +547,49 @@ async function runSite(site) {
   // starts from the same defaults and lists only what it changes.
   check('every stop carries a full layer set',
     slides.every((s) => KNOWN.every((k) => k in s.layers)));
+
+  // ---- figures -------------------------------------------------------------
+  //
+  // Still pictures on the stage. Everything here is per *picture*, so a deck
+  // with none adds no checks -- which is what keeps Ridge Hill at 464 -- and the
+  // section as a whole is announced rather than dropped.
+  //
+  // What is worth checking is not that the code runs. It is the four ways a
+  // picture goes wrong quietly, none of which throws and all of which are
+  // invisible until somebody is standing in front of a room:
+  //
+  //   - a **misspelled slot** matches no CSS rule, so the picture draws at the
+  //     container's origin -- top left, over the map -- rather than where the
+  //     beat said;
+  //   - a **misspelled filename** is a broken-image glyph on a projector;
+  //   - a **missing alt** is silent by definition;
+  //   - and a **big picture in a crowded slot** lands on the caption, which is
+  //     the one thing on screen that may never be covered.
+  console.log('\nfigures');
+  const pictured = slides.flatMap((s) => resolveFigures(s).map((fig) => ({ s, fig })));
+  if (!site.expectImages) {
+    skip('figures', 'no stop on this deck puts a picture on the stage');
+  } else {
+    // The feature cannot ship dead. Same argument as the beacons act: a drawing
+    // path nothing exercises is one that regresses without anything looking
+    // wrong.
+    check('the deck actually carries pictures', pictured.length > 0,
+      `${pictured.length} across ${slides.length} stops`);
+  }
+  for (const { s, fig } of pictured) {
+    const where = `${s.actId}/${s.stopIndex}`;
+    check(`${where}: "${fig.src}" sits in a known slot`, FIGURE_SLOTS.includes(fig.at), fig.at);
+    check(`${where}: at a known size`, FIGURE_SIZES.includes(fig.size), fig.size);
+    // `src` is relative to the page, and every page is in `web/`.
+    check(`${where}: the file is there`, existsSync(`web/${fig.src}`), `web/${fig.src}`);
+    check(`${where}: it says what it is a picture of`,
+      typeof fig.alt === 'string' && fig.alt.trim().length > 0, fig.alt || '(none)');
+    // The pair rule. Both of these grow toward chrome -- `below-centre` toward
+    // the caption, `right-of-centre` toward the meter -- and both are fine until
+    // `lg`.
+    check(`${where}: not a large picture in a crowded slot`,
+      !(CROWDED_SLOTS.includes(fig.at) && fig.size === 'lg'), `${fig.at} at ${fig.size}`);
+  }
 
   // ---- the sources card ----------------------------------------------------
   //
@@ -2608,6 +2690,31 @@ async function runSite(site) {
       }
       check('every slide can be entered', !walkErr, walkErr ? `${walkErr.message}` : `${deck.slides.length} slides`);
 
+      // The pictures, through the real `enter` rather than the beats file. The
+      // static section above checks what the deck *says*; this checks that
+      // entering the stop actually mounts it, and -- the half that is a real bug
+      // class -- that leaving takes it away again. A figure left behind is the
+      // layer-left-on bug in a channel the layer table does not cover.
+      if (!site.expectImages) {
+        skip('mounting a picture', 'no stop on this deck puts a picture on the stage');
+      } else {
+        const withPic = deck.slides.findIndex((s) => (s.images || []).length > 0);
+        check('a stop with a picture is reachable', withPic >= 0);
+        if (withPic >= 0) {
+          deck.go(withPic);
+          check('entering it mounts the picture', deck.figures.length === deck.slides[withPic].images.length,
+            `${deck.figures.length} on screen`);
+          check('and the slot survived the defaulting',
+            FIGURE_SLOTS.includes(deck.figures[0].at), deck.figures[0].at);
+          const without = deck.slides.findIndex((s) => !(s.images || []).length);
+          if (without >= 0) {
+            deck.go(without);
+            check('leaving takes it away again', deck.figures.length === 0,
+              `${deck.figures.length} left behind`);
+          }
+        }
+      }
+
       // Retiming is the feature most likely to be wrong in a way nobody notices:
       // the number moves but the slide does not follow it.
       const before = deck.frames.dirty;
@@ -3060,6 +3167,182 @@ async function runSite(site) {
           const out = boxes.filter((b) => b.lon[0] < west || b.lon[1] > east);
           check(`${s.actId}/${s.stopIndex}: all five regions are on screen`,
             out.length === 0, out.map((b) => b.id).join(','));
+        }
+
+        // ---- the picks -----------------------------------------------------
+        //
+        // Five buttons that jump straight to a region's hour, so the presenter
+        // can ask the room which one to look at first and click it. The camera
+        // does not move across them -- only the frame -- so the beacons relight
+        // and the bar answers, and the difference between the letters is the
+        // whole argument of the act.
+        //
+        // ⚠ **Everything below is inside the `meta.beacons` gate**, including
+        // the two checks that are really about the stylesheet and the page. They
+        // belong in the site-agnostic sections further up this file, and they
+        // are here anyway: those run for Ridge Hill, whose count is the tripwire
+        // that says the engine split and the beacon work left it untouched. A
+        // check about a row of buttons that exist on one page of one deck is not
+        // worth moving that number for.
+        const pickAct = acts.find((a) => a.picks);
+        if (!site.expectPicks) {
+          skip('the picks', 'this deck has no act that can be run out of order');
+        } else if (!pickAct) {
+          check('the deck still declares its picks', false,
+            'expectPicks is set and no act has a `picks` list');
+        } else {
+          const targets = pickTargets(slides, pickAct.picks);
+          const labels = targets.map((k) => String(slides[k].id).replace(/^pick-/, ''));
+
+          // The pure half, and the reason `pickTargets` is in engine.js: a
+          // button that lands nowhere looks perfectly fine until it is pressed,
+          // which on this deck means in front of an audience.
+          check('every pick resolves to a slide that exists',
+            targets.length === pickAct.picks.length && targets.every((k) => slides[k]),
+            `${targets.length} of ${pickAct.picks.length}`);
+          check('a pick that names no stop fails loudly rather than dropping out',
+            (() => {
+              try { pickTargets(slides, ['pick-nowhere']); return false; } catch { return true; }
+            })(),
+            'a silently dropped pick would shift every letter after it along the row');
+
+          // ⚠ **A button that lands on a blank hour wastes the pick.** 46% of
+          // this record has no reading, so an hour chosen for its beacons alone
+          // is a coin flip on whether the bar can answer at all -- and the bar
+          // answering is the entire point of pressing the button.
+          //
+          // `DECK`, not `deck`: three lines above the mount, the spec is
+          // shadowed by the mounted deck.
+          const pickObs = series.species[DECK.species].obs;
+          for (const [j, k] of targets.entries()) {
+            check(`pick ${labels[j]} lands on an hour with a reading`,
+              pickObs[slides[k].t] != null,
+              `frame ${slides[k].t}${pickObs[slides[k].t] == null ? '' : ` reads ${pickObs[slides[k].t].toFixed(1)}`}`);
+          }
+
+          // ⚠ **Fixed letter order, and never sorted by anything measured.**
+          // `meta.beacons.boxes` carries each region's `r` and `sepPpx` -- the
+          // answer to the question this act asks the audience -- and a row put
+          // in strength order would be that answer, printed in the one place
+          // nobody would think to check. The letters on the boxes are the order.
+          check('the row reads in letter order, not in strength order',
+            labels.join('') === boxes.map((b) => b.id).join(''),
+            `${labels.join('')} vs ${boxes.map((b) => b.id).join('')}`);
+
+          // ⚠ **The same rule as `nothing on the map gives the answer away`**,
+          // extended off the canvas. A place name is text on screen whether it
+          // was drawn with `fillText` or set as a button's label, and
+          // "Shandong" on a button during the game is the reveal.
+          const names = boxes.map((b) => String(b.name).toLowerCase());
+          check('no button is labelled anything but its letter',
+            labels.every((s) => /^[A-E]$/.test(s)), labels.join(' '));
+          check('and no button names a region',
+            !labels.some((s) => names.includes(s.toLowerCase())), names.join(', '));
+
+          // ---- and as the deck actually paints it ---------------------------
+          //
+          // ⚠ **Order matters below.** Entering a pick marks it, so the two
+          // `done` checks have to happen while exactly one region has been
+          // shown. Walking the whole act comes after them.
+          const actSlides = slides
+            .map((s, k) => ({ s, k }))
+            .filter(({ s }) => s.actId === pickAct.id);
+          const chooser = actSlides[0].k;
+
+          deck.go(chooser);
+          check('the chooser carries the whole row',
+            deck.picks.length === pickAct.picks.length, `${deck.picks.length} buttons`);
+          // ⚠ **The chooser is not one of the five.** It declares the row
+          // without being on it, so nothing is current while the question is
+          // still open -- and `visited` must not have picked it up either.
+          check('and marks none of them current, since it is not one of them',
+            deck.picks.every((p) => !p.on),
+            deck.picks.filter((p) => p.on).map((p) => p.label).join('') || 'none current');
+
+          // The out-of-order jump itself, by key. Clicking is the primary path
+          // and its handler is the same `go(target)`; a presentation clicker
+          // sends arrows only, so the keys are for whoever is at the keyboard.
+          press('3');
+          check('a number key on the chooser jumps straight to that region',
+            slides[deck.index].id === 'pick-C', slides[deck.index].id || '(no id)');
+          check('and it lands on an hour that region is being smelled on',
+            map.beaconLevel(deck.slides[deck.index].t)[2] === 2,
+            map.beaconLevel(deck.slides[deck.index].t).join(''));
+
+          // ⚠ **Marked, and not by colour alone** -- the deck's own rule. This
+          // is the flag; the stylesheet's half is checked at the end.
+          //
+          // Only the positive direction, and deliberately: `visited` is a record
+          // of the whole session, and by the time this section runs the walk
+          // through every slide near the top of this file has been past all five.
+          // A check that asserted "E is not marked" would be asserting that the
+          // deck forgets, which is the opposite of what the row is for.
+          check('the region just shown is marked as done',
+            deck.picks.find((p) => p.label === 'C').done === true);
+          check('and it is the one marked current', deck.picks.filter((p) => p.on)
+            .map((p) => p.label).join('') === 'C',
+            deck.picks.filter((p) => p.on).map((p) => p.label).join('') || 'none current');
+
+          // ⚠ **The date is off on the picks.** They are five different days --
+          // 4 June to 17 July, one per region, which is the act working as
+          // designed -- and a stamp jumping between them reads as the deck
+          // losing its place rather than as the point.
+          check('the date stamp is off while a pick is showing', byId('stamp').hidden === true);
+
+          // The row shows on **every stop of the act**, not only the chooser:
+          // after region A you click B directly rather than walking back to a
+          // menu, and the row doubles as the record of which have been done.
+          for (const { k } of actSlides) {
+            deck.go(k);
+            check(`${slides[k].id || 'the chooser'} carries the whole row`,
+              deck.picks.length === pickAct.picks.length, `${deck.picks.length} buttons`);
+          }
+
+          // And nowhere else in the deck -- 1 to 5 shadow the act jumps on these
+          // six slides and must go back to being act jumps on every other one.
+          const elsewhere = slides.findIndex((s) => s.actId !== pickAct.id);
+          deck.go(elsewhere);
+          check('no other slide in the deck shows a row', deck.picks.length === 0,
+            `${deck.picks.length} on ${slides[elsewhere].actId}`);
+          check('and the date is back on', byId('stamp').hidden === false);
+          press('3');
+          check('and 1-9 are still the act jumps there',
+            slides[deck.index].actIndex === 2, `landed on ${slides[deck.index].actId}`);
+
+          // Trap 1, and the only check in this file that can catch it: the DOM
+          // stub above conjures an element for any id it is asked for, so
+          // `paintPicks` runs happily against a page with no `#picks` in it.
+          {
+            const html = readFileSync(new URL(`../../${site.page}`, import.meta.url), 'utf8');
+            check(`${site.page} actually has the element the row is built into`,
+              /id="picks"/.test(html), site.page);
+          }
+
+          // The `[hidden]` trap, for a fourth element. `.picks` declares
+          // `display: flex`, which is an author rule and beats the browser's
+          // `[hidden] { display: none }` outright -- so without its own guard
+          // the row would show on every slide of every deck, and the symptom
+          // would be five buttons over the Ridge Hill map rather than an error.
+          {
+            const css = readFileSync(new URL('../../css/story.css', import.meta.url), 'utf8')
+              .replace(/\/\*[\s\S]*?\*\//g, '');
+            const subjects = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, sel, body]) => ({
+              subjects: sel.split(',').map((s) => s.trim().split(/\s+/).pop()),
+              body,
+            }));
+            const declares = subjects.some((b) => b.subjects.includes('.picks') && /display\s*:/.test(b.body));
+            const guarded = subjects.some((b) => b.subjects.includes('.picks[hidden]')
+              && /display\s*:\s*none/.test(b.body));
+            check('#picks: hiding the row actually hides it', !declares || guarded,
+              declares ? (guarded ? 'declares display, and guards it' : 'declares display with NO [hidden] rule')
+                : 'no author display, the browser rule applies');
+            // The other half of the deck's colour rule, in the stylesheet where
+            // it lives: `done` may tint, but it may not *only* tint.
+            const done = subjects.filter((b) => b.subjects.includes('.pick.done'));
+            check('a visited region is marked by more than a tint',
+              done.some((b) => /box-shadow|border-bottom|text-decoration|content\s*:/.test(b.body)),
+              done.map((b) => b.body.trim().split('\n')[0]).join(' / ') || 'no .pick.done rule');
+          }
         }
       }
     }

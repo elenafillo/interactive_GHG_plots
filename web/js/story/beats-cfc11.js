@@ -95,7 +95,53 @@
  * nothing here has been measured well enough to name a peak, and inventing one
  * would put a pause on a frame no one has looked at.
  */
-const FRAMES = { clean: 379, dirty: 301, beacon_B: 32, beacon_AB : 535, beacon_C: 288, beacon_Calt: 504, beacon_CD: 180, beacon_D: 310, beacon_E: 223};
+/**
+ * The five beacon frames, read straight out of the shipped `series.json`.
+ *
+ * One hour per region: the frame where that letter is at level 2 with the other
+ * four as quiet as the record allows, **and a reading present** -- a button that
+ * lands on a blank hour spends the room's attention on an empty bar.
+ *
+ * | pick | frame | A·B·C·D·E | KST | reading | bar |
+ * |---|---|---|---|---|---|
+ * | **A** | 51 | `2 1 0 0 0` | Sun 5 Jun 15:00 | 233.6 | 2% |
+ * | **B** | 41 | `0 2 0 0 0` | Sat 4 Jun 19:00 | 233.5 | 2% |
+ * | **C** | 504 | `0 0 2 0 0` | Sun 17 Jul 09:00 | 264.1 | **47%** |
+ * | **D** | 278 | `0 0 0 2 2` | Fri 24 Jun 13:00 | 248.2 | 23% |
+ * | **E** | 226 | `0 0 0 0 2` | Mon 20 Jun 05:00 | 234.6 | 3% |
+ *
+ * **This table is the act.** Pick A, B or E and the bar sits at 2--3%; pick C
+ * and it jumps to half, on the same map with the same five buttons. The
+ * argument makes itself without a caption having to make it -- which is the
+ * point, because a caption that made it would be the reveal.
+ *
+ * ⚠ **These are not the frames this file used to name**, and three of the old
+ * ones muddied the pick: `beacon_B` was 32 (`1 2 0 0 0`, A lights too),
+ * `beacon_C` 288 (`0 0 2 1 1`), `beacon_D` 310 (`0 0 2 2 0`, C just as hard),
+ * `beacon_E` 223 (`0 0 0 1 2`). A button labelled C that lights D and E as well
+ * is not a question the room can answer. The names are kept and the numbers
+ * moved, so nothing outside this object had to change.
+ *
+ * ⚠ **`beacon_AB` is A's frame, and A is never alone.** No hour in the record
+ * has A at 2 with B dark; 51 is the best there is, with B at 1 beside it. The
+ * name is still honest -- both are lit, A hard -- and it is why the stop was a
+ * `Region A+B` in the scaffold.
+ *
+ * ⚠ **D is never alone either, and that is the data rather than a bug.** D
+ * reaches level 2 on 37 frames and C is also at 2 in 34 of them; only 178, 278
+ * and 316 have D high with C below it, and 316 has no reading. So there is no
+ * honest "just D" hour and none is to be gone looking for. This is the status
+ * doc's own line -- *"D keeps it a game. At +0.52 the two western beacons light
+ * together and the room has to choose"* -- showing up in the frames. 278 is D
+ * with E and no C, which is the closest the record comes.
+ *
+ * Alternatives, all observed and all checked: **B** 29 or 143; **C** anywhere in
+ * the 15-frame run 504..518, of which `beacon_Calt` (507) reads 270.6 and fills
+ * the bar to 56%; **E** 227, 257, 258, 259. `beacon_CD` (180, `0 0 2 2 1`) is
+ * named by no stop and kept as the two-western-beacons contrast if the reveal
+ * ever wants one.
+ */
+const FRAMES = { clean: 379, dirty: 301, beacon_B: 41, beacon_AB: 51, beacon_C: 504, beacon_Calt: 507, beacon_CD: 180, beacon_D: 278, beacon_E: 226 };
 
 /**
  * The smell bar's scale, above a fixed floor.
@@ -136,7 +182,7 @@ const FRAMES = { clean: 379, dirty: 301, beacon_B: 32, beacon_AB : 535, beacon_C
  * day gives. That is the honest picture of a day that is nearly, but not quite,
  * background.
  */
-const SMELL = { base: 232.3, span: 68 };
+const SMELL = { base: 232.3, span: 55 };
 
 /**
  * Where the two back-trajectory fans start from.
@@ -261,6 +307,31 @@ function acts(f) {
           caption: 'Same idea. One sniffer on a clifftop.',
           camera: CLIFF,
           layers: { station: 1, graticule: 1 },
+          /**
+           * The first picture in any of the three decks.
+           *
+           * `right-of-centre` rather than a corner, and that is the point of the
+           * slot: `CLIFF` centres the camera on the station, so the middle of
+           * the map *is* the thing the caption is talking about. The picture
+           * stands beside it by `--fig-gap` and stays beside it on any screen,
+           * which a corner would not -- a mast in the top right and a dot in the
+           * middle are two objects the room has to connect for itself.
+           *
+           * Nothing else is on screen here to collide with: the footprint is
+           * off, so the meter is hidden, and the caption is bottom-left.
+           *
+           * ✏️ **The file is a stand-in and says so on its face.** There is no
+           * photograph of Gosan in this repository. Drop `mast.jpg` in beside it
+           * and change this one `src`; nothing else moves.
+           */
+          images: [
+            {
+              src: 'img/gsn-cfc11/gosan_station.jpeg',
+              at: 'left-of-centre',
+              size: 'lg',
+              alt: 'The measurement mast on the clifftop at Gosan',
+            },
+          ],
         },
         {
           caption: 'It can smell eastern China, Japan and Korea.',
@@ -450,6 +521,21 @@ function acts(f) {
       id: 'beacons',
       title: 'Five places',
       anchor: 'clean',
+      /**
+       * The five regions, reachable out of order.
+       *
+       * The presenter asks the room which one they want to look at first and
+       * clicks it. The camera does not move -- every pick is framed on `DOMAIN`
+       * -- so only the hour changes: the beacons relight and the bar answers.
+       *
+       * ⚠ **Fixed A--E order, and never sorted by anything measured.**
+       * `meta.beacons` carries each box's `r` and `sepPpx`, which are the answer
+       * to the question this act asks the audience. A row ordered by strength
+       * would be the reveal, hidden in the one place nobody would think to look
+       * for it -- and it would still be the reveal on a screen where the letters
+       * were unreadable from the back. The letters are the order.
+       */
+      picks: ['pick-A', 'pick-B', 'pick-C', 'pick-D', 'pick-E'],
       // The status doc's `beacons` beat -- *the five, named, all dark* -- and the
       // first thing in this deck that draws them. The `game` act after it is
       // Brief 4's and is not here.
@@ -457,8 +543,9 @@ function acts(f) {
       // ⚠ **This act exists so the layer cannot ship dead.** Brief 3 is the
       // drawing path, and a state channel nothing on screen exercises is a state
       // channel that regresses silently -- the exact failure the meter's third
-      // state was built around. Between the two stops the map draws every state
-      // the layer has: five dark, then three at high.
+      // state was built around. Across its six stops the map draws every state
+      // the layer has: five dark on the chooser, one at high on four of the
+      // picks, and B at low beside A's high on the fifth.
       //
       // ⚠ **`DOMAIN`, and it has to be.** B's box reaches lon 136.0, outside
       // both `CHINA` (111..131) and `OCEAN` (113.5..131.5) -- those framings show
@@ -483,49 +570,78 @@ function acts(f) {
           camera: DOMAIN,
           layers: { footprint: 1, beacons: 1, graticule: 1 },
         },
+        /**
+         * The five picks. Each one is a stop like any other -- the `id` is the
+         * only thing that makes it reachable out of order, and the button in
+         * front of it does nothing `go(i)` did not already do.
+         *
+         * ⚠ **Each carries an explicit `t`, so none of them follows the
+         * anchor.** The act is anchored on the quiet day; these five are the
+         * hours the record says each region is being smelled. Retiming the act
+         * drags the chooser and deliberately leaves the picks, because an hour
+         * arrived at by dragging would not reliably have any beacon lit at all.
+         * (`toSlides` now honours a stop-level `anchor` if one is ever wanted
+         * here, which is what makes `[` and `]` on a pick truthful rather than
+         * silently moving the clean day.)
+         *
+         * ⚠ **The stamp is off on all five.** They span 4 June to 17 July --
+         * five different days, one per region, which is the act working as
+         * designed and not a chronology to be fixed. With the date on screen the
+         * jump reads as the deck losing its place; without it, the only thing
+         * that changes between two picks is the thing the act is about. The
+         * presenter is free to say "five different days" out loud, and the hour
+         * is still on the scrubber behind H.
+         *
+         * ✏️ The captions are placeholders like every other in this file, and
+         * these five are the ones to be most careful with: none may name
+         * Shandong or hint which letter matters. `meta.beacons` carries the
+         * correlations that would give it away and nothing on screen reads them.
+         * The letters are already on the boxes, so a caption naming the letter
+         * again is a wasted line.
+         */
         {
-          // ✏️ Placeholder. It must not name Shandong or hint which letter
-          // matters -- that is the answer to act 5, and `meta.beacons` carries
-          // the correlations that give it away. Nothing on screen reads them.
-          //
-          // ⚠ **An explicit `t`, so this stop does not follow the anchor.** The
-          // act is anchored on the quiet day and this stop is the dirty one --
-          // 301, where C, D and E all read 2 and A and B read 0. Retiming the
-          // act drags the first stop and deliberately leaves this one, because
-          // what it is for is the *contrast* with the stop before it, and an
-          // hour chosen by dragging would not reliably have a beacon lit at all.
+          id: 'pick-A',
+          caption: 'Region A',
+          camera: DOMAIN,
+          t: f.beacon_AB,
+          stamp: false,
+          layers: { footprint: 1, beacons: 1, graticule: 1 },
+        },
+        {
+          id: 'pick-B',
           caption: 'Region B',
           camera: DOMAIN,
           t: f.beacon_B,
+          stamp: false,
           layers: { footprint: 1, beacons: 1, graticule: 1 },
         },
         {
-         caption: 'Region A+B',
-          camera: DOMAIN,
-          t: f.beacon_AB,
-          layers: { footprint: 1, beacons: 1, graticule: 1 },
-        },
-        {
-         caption: 'Region C',
+          id: 'pick-C',
+          caption: 'Region C',
           camera: DOMAIN,
           t: f.beacon_C,
+          stamp: false,
           layers: { footprint: 1, beacons: 1, graticule: 1 },
         },
         {
-         caption: 'Region D',
+          id: 'pick-D',
+          caption: 'Region D',
           camera: DOMAIN,
           t: f.beacon_D,
+          stamp: false,
           layers: { footprint: 1, beacons: 1, graticule: 1 },
         },
         {
-         caption: 'Region E',
+          id: 'pick-E',
+          caption: 'Region E',
           camera: DOMAIN,
           t: f.beacon_E,
+          stamp: false,
           layers: { footprint: 1, beacons: 1, graticule: 1 },
         },
       ],
     },
-
+    /**
     {
       id: 'record',
       title: 'How much can we smell?',
@@ -569,8 +685,69 @@ function acts(f) {
            * where the playback comes to *rest* -- `from`, every `holdAt` and
            * `to` are observed frames -- because a pause is a slide ending and
            * ought to end on something the caption can be about.
-           */
+           
           play: { from: 180, to: 379, stepsPerSec: 9, holdAt: ['dirty', 'clean'] },
+        },
+      ],
+    },
+    */
+    {
+      id: 'answer',
+      title: 'The answer',
+      // No anchor and no `t`, so `buildDeck` rests it on `f.clean` -- **379,
+      // the frame `record` comes to rest on**. That is the whole reason it has
+      // no moment of its own: the date on a four-year average means nothing, and
+      // the least a meaningless stamp can do is not change when the presenter
+      // presses the key. The map underneath does not move either; only the
+      // picture arrives.
+      anchor: null,
+      chart: false,
+      stops: [
+        {
+          /**
+           * **The last slide, and the only one that answers the question.**
+           *
+           * The published result: CFC-11 over eastern China, 2014-2017, with the
+           * strongest source squarely inside beacon C's box (34.5-38.2 N,
+           * 115.0-122.5 E). The room has just spent act 5 watching C light on
+           * every smelly hour; this is the same answer arrived at properly, and
+           * the deck's own key backs it -- C is r **+0.873** against the reading
+           * where the next best is D at +0.52.
+           *
+           * ⚠ **This caption names Shandong and no earlier one may.** That is not
+           * an inconsistency: naming it during the game is the reveal three acts
+           * early, which is what the suite's `nothing on the map gives the answer
+           * away` check is for. Here it is the point.
+           *
+           * ⚠ **The picture carries jargon the captions are forbidden**: its own
+           * colourbar reads "CFC-11 emissions" in g m⁻² s⁻¹, and the panel is
+           * still lettered **b** from the paper it came out of. Deliberate, and
+           * deliberately only here -- the last slide is the grown-ups' version of
+           * what the room just did by eye, and it should look like one. The ten
+           * words and the banned list are rules about *captions*, which is all
+           * `bannedIn` reads. Do not crop the scale off; it is what makes it a
+           * measurement rather than a picture of a blob.
+           *
+           * `at: 'card'` is the slot for a picture that *is* the slide -- it
+           * sizes itself from the stage (70vw, 72vh) and overrides the three
+           * size steps, which is why no `size` is given here.
+           *
+           * The map beneath is quiet on purpose. `footprint` stays 0, so the
+           * meter hides itself: a bar about one hour in June, beside an answer
+           * covering four years, is two claims on screen at once and the smaller
+           * one wins the eye.
+           */
+          caption: 'Scientists found the same answer!',
+          camera: DOMAIN,
+          layers: { graticule: 1 },
+          images: [
+            {
+              src: 'img/gsn-cfc11/posterior_map.png',
+              at: 'card',
+              alt: 'A published map of CFC-11 emissions over eastern China from '
+                + '2014 to 2017, with by far the strongest source over Shandong',
+            },
+          ],
         },
       ],
     },

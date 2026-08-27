@@ -21,6 +21,13 @@
   --chart-h: 0px;
   --gutter: clamp(16px, 2.4vw, 34px);
 
+  /* The caption's type size, hoisted to a token because something else now has
+     to do arithmetic with it: `.fig-card` reserves room for the caption at the
+     bottom of the stage, and a card that reserved its own guess at this number
+     would drift the first time the caption was retuned. Used in exactly two
+     places, and they must stay the same number. */
+  --caption-fs: clamp(22px, 2.7vw, 36px);
+
   /* Where the bottom row splits. The caption owns everything left of this and
      the presenter panel everything right of it, and both read the same number
      -- so the two cannot overlap however wide the panel's contents get, and
@@ -104,8 +111,9 @@ body.with-chart { --chart-h: clamp(150px, 24vh, 240px); }
 .caption {
   margin: 0;
   /* Read from the back of a room. This is the one thing on screen that has to
-     survive a projector and a bright hall. */
-  font-size: clamp(22px, 2.7vw, 36px);
+     survive a projector and a bright hall. The token is in `:root` because
+     `.fig-card` reserves space against it -- see there. */
+  font-size: var(--caption-fs);
   font-weight: 620;
   line-height: 1.22;
   letter-spacing: -0.015em;
@@ -120,6 +128,158 @@ body.with-chart { --chart-h: clamp(150px, 24vh, 240px); }
   border-radius: 12px;
   padding: 0.5em 0.7em;
   box-shadow: 0 1px 0 var(--hairline), 0 10px 30px rgba(11, 11, 11, 0.07);
+}
+
+/* ---- figures ----------------------------------------------------------- */
+
+/* Still pictures a stop can put on the stage -- the mast, the inlet, the hut.
+   The container is the map's own box, not the viewport: `--chart-h` is 0 unless
+   a chart act is showing, and when one is, the map is shorter and the middle of
+   it moves up. That matters because four of the slots are measured from the
+   *centre*, and the centre they mean is the point the camera is centred on.
+
+   `pointer-events: none` so a picture never eats a click meant for the map.
+
+   z-index 5: over the map, under the caption and the pill at 10. The caption is
+   the one thing on screen that has to survive a projector in a bright hall, and
+   nothing may be allowed to cover it. */
+.figures {
+  position: absolute;
+  inset: 0 0 var(--chart-h) 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* How far the centre-relative slots stand off the middle. One knob -- the
+   subject is usually a dot a few pixels across and the gap is what keeps the
+   picture beside it rather than on it. Tunable on the night like `--panel-left`
+   and the sources contrast; if the room says the mast is crowding the station,
+   this is the number. */
+:root { --fig-gap: clamp(24px, 4vw, 72px); }
+
+.fig {
+  position: absolute;
+  display: block;
+  /* A plate behind the picture, so a transparent PNG and a photograph sit on
+     the map the same way, and so a light photo keeps an edge over pale sea.
+     The radius and the shadow are the caption's, on purpose: one card
+     treatment on the stage, not two. */
+  background: rgba(252, 252, 251, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 1px 0 var(--hairline), 0 10px 30px rgba(11, 11, 11, 0.07);
+  /* Letterboxed inside the size, never stretched. A squashed photograph of an
+     instrument reads as a mistake from the back of a room. */
+  object-fit: contain;
+  /* Fades in on entry rather than appearing between one frame and the next.
+     `both` so it holds its final state; re-running on every `enter` is wanted,
+     since re-entering a slide is the presenter going back to it.
+
+     ⚠ **Opacity only.** Six of the nine slots centre themselves with a
+     `transform`, and a keyframe that animated `transform` would override it for
+     the length of the fade -- so every centred picture would start a third of a
+     screen away from where it belongs and slide into place. The tell is that it
+     only misbehaves in the slots that are hardest to eyeball. */
+  animation: fig-in 0.35s ease both;
+}
+
+/* The `[hidden]` trap, for the third time in this file: the `display` above is
+   an author declaration and the browser's `[hidden] { display: none }` is a
+   user-agent one, so without this a hidden figure would still draw. */
+.fig[hidden] { display: none; }
+
+@keyframes fig-in { from { opacity: 0; } }
+
+/* Nothing moves for a viewer who has asked for that. The picture still
+   appears -- it is content, not decoration -- it just does not slide. */
+@media (prefers-reduced-motion: reduce) {
+  .fig { animation: none; }
+}
+
+/* Three sizes rather than a length, because a beats file has no business
+   naming pixels. Width leads and height is capped, so a portrait photograph
+   and a landscape one both stay inside their slot. */
+.fig-sm { width: clamp(110px, 13vw, 200px); max-height: 26vh; }
+.fig-md { width: clamp(170px, 21vw, 340px); max-height: 40vh; }
+.fig-lg { width: clamp(240px, 31vw, 500px); max-height: 56vh; }
+
+/* -- frame-relative slots: pinned to the edge of the map ------------------ */
+.fig-top-left  { top: var(--gutter); left: var(--gutter); }
+.fig-top-right { top: var(--gutter); right: var(--gutter); }
+.fig-left      { left: var(--gutter); top: 50%; transform: translateY(-50%); }
+.fig-right     { right: var(--gutter); top: 50%; transform: translateY(-50%); }
+
+/* -- centre-relative slots: pinned to the subject ------------------------- */
+
+/* Each one anchors its *near* edge against the midline and stands off by
+   `--fig-gap`, so none of them has to know how big the picture is -- which is
+   the whole reason they are written with `right`/`bottom` rather than with a
+   `left` and a negative translate. Swapping to the latter would need the
+   image's own width, which is not known until it has loaded. */
+.fig-left-of-centre  { right: calc(50% + var(--fig-gap)); top: 50%; transform: translateY(-50%); }
+.fig-right-of-centre { left: calc(50% + var(--fig-gap)); top: 50%; transform: translateY(-50%); }
+.fig-above-centre    { bottom: calc(50% + var(--fig-gap)); left: 50%; transform: translateX(-50%); }
+.fig-below-centre    { top: calc(50% + var(--fig-gap)); left: 50%; transform: translateX(-50%); }
+
+/* -- the picture as the slide -------------------------------------------- */
+
+/* Overrides the size classes: a card is sized by the stage, not by the three
+   steps, because the point of it is that there is nothing else to look at.
+
+   ⚠ **Centred on the stage is not centred on the space that is free.** At 72vh
+   on a 900px screen the card ran from 126 to 774, and the bottom row starts
+   above that -- the caption sits at `--gutter` from the bottom and can wrap to
+   two lines, and the presenter panel sits 34px higher again and wraps to two or
+   three rows of its own. So the card overlapped both, and the picture was on top
+   because everything down there is `z-index: 10` and it is 5. Raising the card
+   over the caption is the wrong fix; the caption is the one thing that may never
+   be covered.
+
+   So the card reserves a strip at each end and centres itself in what is left.
+   Both reserves are measured off the chrome rather than guessed, and **both are
+   written in the chrome's own units**:
+
+     floor  the taller of the two things down there, above the `--gutter` they
+            both sit at.
+              · the caption: two lines -- which is what the ten-word cap implies
+                -- at `--caption-fs`, so 2.44 for the lines and 1 for the
+                padding, rounded up to 3.6 for the shadow.
+              · the presenter panel: 34px higher again, and about 86 tall once
+                the legend has wrapped to a second row.
+            ⚠ **Neither one always wins.** The caption is taller on a wide
+            screen, where its type is at the 36px ceiling; the panel is taller on
+            a small one, where the caption has clamped down to 22px but the
+            panel's controls have not shrunk at all. Reserving for the caption
+            alone put the card 13px into the panel at 640x360.
+     top    `.picks` and `.pill` both sit at `--gutter` and stand about 30px, and
+            both are horizontally centred exactly like this card is.
+
+   ⚠ **The floor cannot be a `vh`, and this is the whole reason the token above
+   exists.** It was `clamp(150px, 20vh, 210px)`, and that fails on precisely the
+   screen a talk is most likely to meet: at **1366x768** the caption is already
+   at its 36px ceiling -- a width-driven clamp -- while 20vh of a short screen is
+   only 154px, so the card overlapped by 3px. 1280x720 cleared it by exactly 0.
+   Both are projector resolutions. Tie the reserve to the thing it is reserving
+   for and the two cannot disagree again.
+
+   The `min()` on the height is what keeps this honest: the card is as large as
+   it can be *without* reaching either reserve, so on a short screen it shrinks
+   instead of overlapping. The 72vh is still the cap on a tall narrow window,
+   where the free space is larger than the picture wants to be. */
+.fig-card {
+  --fig-card-top: calc(var(--gutter) + 40px);
+  --fig-card-floor: calc(var(--gutter) + max(var(--caption-fs) * 3.6, 120px));
+  /* Centre of the free strip, not of the stage. */
+  top: calc(
+    var(--fig-card-top)
+    + (100% - var(--fig-card-top) - var(--fig-card-floor)) / 2
+  );
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(70vw, 900px);
+  max-height: min(
+    72vh,
+    calc(100% - var(--fig-card-top) - var(--fig-card-floor))
+  );
 }
 
 /* ---- smell meter ------------------------------------------------------- */
@@ -309,6 +469,81 @@ body.show-number .meter-num { display: inline; }
 }
 .nav button:hover { color: var(--ink); }
 
+/* ---- picks ------------------------------------------------------------- */
+
+/* The beacon game's five letters: a row that jumps straight to a region's hour,
+   so the act can be run in the room's order instead of the file's.
+
+   **Top-centre**, which is the one edge of this deck nothing else owns -- the
+   meter is top-left, `.dots` and `.nav` top-right, the caption bottom-left, the
+   stamp bottom-right. `.pill` is here too and the two can never coexist: `.pill`
+   shows only on a stop that needs wind, and the act that declares picks carries
+   none.
+
+   Bigger type and a bigger target than `.dot`, because these are pressed *at*
+   rather than walked through: a presenter reaching for one mid-sentence with an
+   audience watching, on a touch screen as often as with a mouse. 44px is the
+   floor a finger needs. */
+
+/* The `[hidden]` trap, for the fourth time in this file: the `display` below is
+   an author declaration and the browser's `[hidden] { display: none }` is a
+   user-agent one, so without this the row would show on all three decks and on
+   every slide of them. */
+.picks[hidden] { display: none; }
+
+.picks {
+  position: absolute;
+  left: 50%;
+  top: var(--gutter);
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+
+.pick {
+  min-width: 44px;
+  min-height: 44px;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 620;
+  line-height: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: rgba(252, 252, 251, 0.86);
+  color: var(--ink2);
+  cursor: pointer;
+  /* The underline strip, declared transparent here so it is always in the box.
+     `.done` fills it rather than adding it, and nothing on the row moves when a
+     region is ticked off -- the same layout-stability bargain `.meter-note`
+     makes with its `visibility`. Inset, so it costs no space at all. */
+  box-shadow: inset 0 -3px 0 transparent;
+}
+
+.pick:hover { color: var(--ink); }
+
+/* Already shown. ⚠ **A filled underline, not a tint** -- this deck's own rule is
+   that colour is never the only channel, and a row of five letters seen from the
+   back of a hall is exactly where a tint stops being a signal. The tint is here
+   too; it is just not carrying the claim on its own. */
+.pick.done {
+  box-shadow: inset 0 -3px 0 var(--ink);
+  background: rgba(252, 252, 251, 0.96);
+}
+
+/* On screen now. Inverted rather than merely darker, so which one is showing
+   reads as a different *shape* of button and not as a shade of the others. */
+.pick.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+
+/* The current pick has also been visited, by definition. Its underline has to
+   invert with the rest of it or it would vanish into the fill. */
+.pick.on.done { box-shadow: inset 0 -3px 0 rgba(252, 252, 251, 0.85); }
+
 /* Says what is not built yet, rather than dropping the slide silently. */
 .pill {
   position: absolute;
@@ -453,4 +688,23 @@ body.show-number .meter-num { display: inline; }
      underneath it -- so on a phone it does land over the caption, which is the
      same triage the rest of this block is. */
   .scrubber { left: var(--gutter); }
+
+  /* One size at this width, and a small one. The three steps are cut for a
+     projected 16:9 stage; on a phone `lg` is most of the screen and every slot
+     ends up on top of the caption. Same triage as the rest of this block --
+     the picture still shows, it just stops competing. */
+  .fig-sm, .fig-md, .fig-lg { width: 38vw; max-height: 22vh; }
+  /* The card is the one place the picture is meant to dominate, so it keeps
+     doing that -- it just stops reserving room for chrome that is full-bleed
+     here anyway. */
+  /* Keeps the reserve arithmetic from the base rule -- a bare `48vh` here would
+     win the cascade and reintroduce the overlap on a short landscape phone,
+     where 48vh is taller than the strip between the two reserves. */
+  .fig-card {
+    width: 82vw;
+    max-height: min(
+      48vh,
+      calc(100% - var(--fig-card-top) - var(--fig-card-floor))
+    );
+  }
 }

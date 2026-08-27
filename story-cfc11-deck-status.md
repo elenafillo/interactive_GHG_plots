@@ -16,7 +16,7 @@ Three sibling docs own their own ground and are not repeated here:
 **Everything checked, as of this writing:**
 
 ```
-node web/js/story/selftest.mjs      rgl: 464 · gsn: 238 · cfc11: 332 · all green
+node web/js/story/selftest.mjs      rgl: 464 · gsn: 238 · cfc11: 385 · all green
 node web/js/selftest.mjs            all self-tests passed
 python scripts/verify_export.py     all four sites -> all checks passed
 ```
@@ -80,6 +80,7 @@ node web/js/story/selftest.mjs                   # all three decks, headless
 | `web/js/` | the shared browser modules — see §5 |
 | `web/js/story/` | the deck fork: engine, deck, a forked mapview, one beats file per deck |
 | `web/data-*/` | the exports. Generated; never hand-edited |
+| `web/img/` | photographs and figures the decks put on screen. **Hand-authored** — the one directory under `web/` the pipeline does not own |
 | `data/` | inputs, junctioned to the main checkout. 1.6 GB of footprints, obs, fluxes and met |
 | `figs/` | notebook output, and the README's illustrations |
 
@@ -207,12 +208,86 @@ from it; the numbers do, and the exporter reproduces them independently.
 
 | module | what it owns |
 |---|---|
-| `engine.js` | the deck machinery with no story in it: caption rules, frame overrides, play windows, act flattening. **No DOM, no canvas, no imports**, so the suite can assert on every caption without a browser |
-| `deck.js` | the presenter runtime — fullscreen map, one caption, one meter, one date; live-editable moments |
+| `engine.js` | the deck machinery with no story in it: caption rules, frame overrides, play windows, act flattening, `pickTargets` — which stop a named pick lands on — and the figure slots. **No DOM, no canvas, no imports**, so the suite can assert on every caption, on every button landing somewhere real, and on every picture sitting somewhere named, without a browser |
+| `deck.js` | the presenter runtime — fullscreen map, one caption, one meter, one date, any pictures the stop asks for; live-editable moments |
 | `mapview.js` | a **deliberate fork** of `../mapview.js`, additive only: graticule, beacons, the hi-res emissions rasters. Keeps the explorer's copy byte-identical |
 | `beats-rgl.js`, `beats-gsn.js`, `beats-cfc11.js` | one deck's story each: frames, cameras, acts, captions |
 | `beats.js` | ⚠ **a shim, marked for deletion.** One caller left: `scripts/measure_seeding.mjs`, which imports `FRAMES` and `RELEASES` from it |
-| `selftest.mjs` | 3,081 lines, all three decks, headless. Stubs a canvas and exercises the drawing code |
+| `selftest.mjs` | 3,364 lines, all three decks, headless. Stubs a canvas and exercises the drawing code |
+
+### Pictures on the stage — `images` on a stop
+
+Any stop of any deck can put still pictures on screen: a photograph of the mast,
+the instrument hut, a published figure. A stop names them and nothing else:
+
+```js
+images: [
+  { src: 'img/gsn-cfc11/gosan_station.jpeg', at: 'left-of-centre',
+    size: 'lg', alt: 'The measurement station at Gosan' },
+],
+```
+
+`src` is relative to the page, so everything lives under `web/img/`. An array
+rather than a single object because two pictures side by side is the second thing
+anyone asks for, and one syntax is better than two.
+
+**Nine named slots, and they are a closed set** — `FIGURE_SLOTS` in `engine.js`,
+next to `DEFAULT_LAYERS` and for the same reason. Four are pinned to the frame
+(`top-left`, `top-right`, `left`, `right`); four to the **middle of the map**
+(`left-of-centre`, `right-of-centre`, `above-centre`, `below-centre`), which is
+the point the camera is centred on — so on a stop framed at `CLIFF` the picture
+sits beside the station and stays beside it on any screen. `card` is the case
+where the picture *is* the slide.
+
+⚠ **The set is checked, because a stylesheet cannot fail a typo.** `fig-top-rigth`
+matches no rule, so the picture draws at the container's origin — top left, over
+the map, silently. Same failure a misspelled layer name would be, same cure.
+
+Three sizes (`sm`/`md`/`lg`), because a beats file has no business naming pixels.
+⚠ **Slot and size are not independent**: `below-centre` grows toward the caption
+and `right-of-centre` toward the meter, so neither may be `lg`. `CROWDED_SLOTS`
+is the list and the suite enforces the pair.
+
+**DOM images over the canvas, never drawn into it.** Three reasons pointing the
+same way: `story/mapview.js` is already a deliberate fork and stays comparable to
+the explorer's; the render loop repaints every frame while wind is running, so a
+canvas blit would redraw a photograph 60×/s to no effect; and the browser's
+decode, aspect fit and cache are free. `#figures` sits at `z-index: 5` — over the
+map, **under the caption at 10**, which may never be covered. The one case this
+is the wrong shape is a picture pinned to a lon/lat that grows with the camera;
+that is a map layer and belongs beside `_drawBeacons`.
+
+`paintFigures()` rebuilds the row per stop rather than showing and hiding, so a
+picture cannot be left behind three slides later — the same bargain the layer
+table already makes. Every `src` in the deck is fetched once at mount and **not
+awaited**: a deck that will not start because a photograph is missing is worse
+than one slide with a gap in it, and without the preload a JPEG decodes mid-
+sentence.
+
+⚠ **`card` reserves a strip at each end of the stage and centres itself in what
+is left** — it does not centre on the stage. At 72vh it ran under the caption and
+the presenter panel, and it is the *lower* z-index, so the picture won. Both
+reserves are written in the chrome's own units, and this is not fussiness:
+
+- **The floor cannot be a `vh`.** It was `clamp(150px, 20vh, 210px)`, which fails
+  on the screen a talk is most likely to meet — at **1366×768** the caption is
+  already at its 36 px ceiling, a *width*-driven clamp, while 20vh of a short
+  screen is 154 px. Overlap of 3 px. **1280×720** cleared by exactly 0. Both are
+  projector resolutions. `--caption-fs` is now a `:root` token that `.caption`
+  and `.fig-card` both read, so the two cannot drift apart again.
+- **Neither the caption nor the panel always wins.** The caption is taller on a
+  wide screen; the panel is taller on a small one, where the caption has clamped
+  down to 22 px and the panel's controls have not shrunk at all. Reserving for the
+  caption alone put the card 13 px into the panel at 640×360. The floor is
+  `max()` of both.
+
+Resolved at ten viewports, worst case throughout (two-line caption, wrapped
+panel): clearances 38 · 13 · 13 · 6 · 4 · 3 · 241 · 0 · 195 · 178 px. The two
+tightest are pessimistic — under 720 px the panel's key legend is `display: none`,
+so it is one row there and not the two budgeted.
+
+⚠ **`#figures` is on all three pages**, because `deck.js` looks the id up by name
+and all three share it. A deck with no pictures gets an empty container.
 
 ---
 
@@ -238,12 +313,16 @@ the CFC-11 deck's, and is not in that list.
 |---|---|---|---|
 | `story.html` | *Can I smell it?* · Ridge Hill · CH₄ | 464 | **the finished one.** 6 acts, 19 slides — `story-deck-status.md` |
 | `story-gsn.html` | *What should we smell?* · Gosan · HFC-23 | 238 | ships. Inventory and plant list against the air |
-| `story-cfc11.html` | *Which one can we smell?* · Gosan · CFC-11 | 332 | **scaffold with a working beacon layer.** §8 |
+| `story-cfc11.html` | *Which one can we smell?* · Gosan · CFC-11 | 385 | **scaffold with a working beacon layer and five picks.** §8 |
 
 **Ridge Hill's 464 is a fixture.** It has held through the engine split, the meter's
-third state and the beacon work; every check added since is behind a gate that
-deck does not pass through. A change that moves it has reached further than it
-meant to.
+third state, the beacon work, the picks and the pictures; every check added since
+is behind a gate that deck does not pass through. A change that moves it has reached further
+than it meant to.
+
+CFC-11's number is the one that moves — 332 → 385 with the picks, and it moves
+again with every act that lands, since most of this suite is per-stop. It is a
+record of where the deck was, not a fixture like the 464.
 
 ---
 
@@ -306,6 +385,83 @@ identity and never change with the state. `_beaconInk` measures both candidate i
 colours against the fill and picks the better one; the suite holds the worst case
 at 5.5:1.
 
+### The picks — five buttons, A to E
+
+The `beacons` act can be run in **the room's order rather than the file's**. The
+presenter asks which region to look at first and clicks it; the camera does not
+move — every pick is framed on `DOMAIN` — so only the hour changes, the beacons
+relight and the bar answers.
+
+Declared, not wired: the act carries `picks: ['pick-A' … 'pick-E']` and each
+region stop carries a matching `id`. `pickTargets(slides, picks)` in `engine.js`
+turns those names into slide indices and **throws on one that resolves to
+nothing**; `paintPicks()` in `deck.js` builds the row and every button is a
+`go(target)` that already existed. `#picks` is on `story-cfc11.html` **only** —
+the other two pages share `deck.js` and the lookup is guarded for null.
+
+The row shows on **every stop of the act, not only the chooser**: after region A
+you click B directly rather than walking back to a menu, and it doubles as the
+record of which the room has been shown — marked with a filled underline, since
+colour is never the only channel here. `1`–`5` shadow the act jumps **only** on a
+slide that declares picks, because a clicker sends arrows and nothing else.
+
+⚠ **Fixed A–E order, never sorted by anything measured.** `meta.beacons` carries
+each box's `r` and `sepPpx`, which are the answer to the question the act asks —
+a row in strength order would be the reveal, in the one place nobody would think
+to check. For the same reason the buttons are **labelled with the letters
+alone**: "Shandong" on a button is the reveal whether it is drawn on canvas or
+set as text, and the suite checks the labels against `meta.beacons.boxes[].name`.
+
+#### The frames, measured off the shipped `series.json`
+
+For each letter, the hour where it is at level 2 with everything else as quiet as
+the record allows, **and a reading present** — a button landing on a blank hour
+spends the room's attention on an empty bar, and 46% of this record is blank.
+
+| pick | frame | A·B·C·D·E | KST | reading | bar |
+|---|---|---|---|---|---|
+| **A** | 51 | `2 1 0 0 0` | Sun 5 Jun 15:00 | 233.6 | 2% |
+| **B** | 41 | `0 2 0 0 0` | Sat 4 Jun 19:00 | 233.5 | 2% |
+| **C** | 504 | `0 0 2 0 0` | Sun 17 Jul 09:00 | 264.1 | **47%** |
+| **D** | 278 | `0 0 0 2 2` | Fri 24 Jun 13:00 | 248.2 | 23% |
+| **E** | 226 | `0 0 0 0 2` | Mon 20 Jun 05:00 | 234.6 | 3% |
+
+**This table is the act.** Pick A, B or E and the bar sits at 2–3%; pick C and it
+jumps to half. Same map, same five buttons, and the argument makes itself without
+a caption having to make it.
+
+Alternatives, all observed: **B** 29 or 143; **C** anywhere in the 15-frame run
+504–518, of which `beacon_Calt` (507) reads 270.6 and fills the bar to 56%; **E**
+227, 257, 258, 259. `beacon_CD` (180) is named by no stop.
+
+⚠ **A is never alone and neither is D — that is the data, not a bug.** No hour
+has A at 2 with B dark; 51 is the best there is, B at 1 beside it. D reaches
+level 2 on 37 frames and C is also at 2 in 34 of them: only 178, 278 and 316 have
+D high with C below it, and 316 has no reading. So there is no honest "just D"
+hour and none is to be gone looking for — this is *"D keeps it a game"* above,
+showing up in the frames. 278 is the closest the record comes and is what the
+button uses.
+
+⚠ **The picks turn the date stamp off** (`stamp: false` on the stop; the default
+is on, and no other stop in any deck sets it). They span 4 June to 17 July —
+five different days, one per region, which is the act working as designed — and a
+date jumping between two buttons reads as the deck losing its place rather than
+as the point. The presenter is free to say "five different days" out loud, and
+the hour is still on the scrubber behind H. This does **not** close the
+chronology ⚠ in §13, which is about `clean-smell` running before `dirty`.
+
+⚠ **The five frames are not the ones the scaffold named.** `beacon_B` was 32
+(`1 2 0 0 0`), `beacon_C` 288 (`0 0 2 1 1`), `beacon_D` 310 (`0 0 2 2 0`),
+`beacon_E` 223 (`0 0 0 1 2`) — three of them light regions the button does not
+claim, which is not a question the room can answer. The names were kept and the
+numbers moved, so nothing outside `FRAMES` changed.
+
+⚠ **`toSlides` used to clobber a stop-level `anchor`** with the act's, so `[` and
+`]` on a pick would have nudged the *clean day* and moved nothing on screen. It
+is now `stop.anchor ?? act.anchor`. **No stop in any deck declares one**, checked
+across all three, so every existing slide resolves exactly as before — which is
+what holds Ridge Hill at 464.
+
 ### The acts as built
 
 | act | stops | state |
@@ -315,12 +471,47 @@ at 5.5:1.
 | `clean-smell` | the plume, bar near empty | " |
 | `sources` | the question on an empty map, then the population guess | ships |
 | `dirty` | 26 Jun, the reading high | anchor 301, window 301..306 |
-| `beacons` | five dark, then B, A+B, C, D, E | **the beacon layer, exercised in every state** |
+| `beacons` | the chooser, then A, B, C, D, E — **reachable out of order** | **the beacon layer, exercised in every state** |
 | `record` | three weeks hour by hour, 180..379 at 9/s | crosses the 74 h join, knowingly |
+| `answer` | the published map as a `card`, over the full domain | **the last slide, and the only one that answers the question** |
 
 The `game` act the deck is *for* — guess-then-reveal, built out of stops — is not
 built. **Every caption in the file is a placeholder**: inside the ten-word cap and
 clear of the banned list, which the suite enforces, but that is a floor.
+
+### The two pictures
+
+The machinery is in §5; these are the two this deck uses.
+
+| stop | picture | slot |
+|---|---|---|
+| `where/2` — the clifftop | `gosan_station.jpeg` | `left-of-centre` — beside the station, because `CLIFF` centres the camera on it |
+| `answer/0` — the last slide | `posterior_map.png` | `card` |
+
+**`answer` is the reveal.** The published result: CFC-11 over eastern China,
+2014–2017, with the strongest source squarely inside **beacon C's box**
+(34.5–38.2 N, 115.0–122.5 E). The room has just watched C light on every smelly
+hour; this is the same answer arrived at properly, and the key above backs it —
+C at r **+0.873** where the next best is D at +0.52.
+
+⚠ **Its caption names Shandong and no earlier one may.** Naming it during the
+game is the reveal three acts early, which is what `nothing on the map gives the
+answer away` exists to stop. Here it is the point.
+
+⚠ **The picture carries jargon every caption is forbidden** — its own colourbar
+reads "CFC-11 emissions" in g m⁻² s⁻¹ and the panel is still lettered **b** from
+the paper. Deliberate, and deliberately only here: the last slide is the
+grown-ups' version of what the room just did by eye and should look like one. The
+ten words and the banned list are rules about *captions*, which is all `bannedIn`
+reads. **Do not crop the scale off** — it is what makes it a measurement rather
+than a picture of a blob.
+
+The stop has **no `t`**, so it rests on `f.clean` — 379, the frame `record` comes
+to rest on. The date of a four-year average means nothing, and the least a
+meaningless stamp can do is not change when the presenter presses the key. It
+carries **no footprint**, so the meter hides itself: a bar about one hour in June,
+beside an answer covering four years, is two claims at once and the smaller one
+wins the eye.
 
 ### The anchors, the bar and the wind
 
@@ -445,6 +636,24 @@ the tuning panel's reset and the per-species display window, at a cost of 6 KB.
 - **A hi-res raster's stop must fly in far enough for its cells to read.**
 - **Beacon boxes are disjoint**, every letter is on screen in every state, and no
   caption names the answer.
+- **Every pick resolves to a slide that exists**, asserted against `pickTargets`
+  with nothing mounted, and **every pick's frame carries a reading**. The row is
+  checked to read in letter order rather than strength order, and no button label
+  may match a `name` in `meta.beacons.boxes` — the same rule as the canvas, since
+  a place name is text on screen either way.
+- **Every picture sits in a known slot at a known size**, its file exists on
+  disk, it has alt text, and it is not `lg` in a crowded slot. All four are
+  written **per picture**, so a deck with none adds no checks — which is what
+  kept Ridge Hill at 464 while the capability landed. Entering a stop is checked
+  to mount the picture and **leaving is checked to take it away again**: a figure
+  left behind is the layer-left-on bug in a channel the layer table does not
+  cover.
+- ⚠ **The `#picks` tag is checked by reading the HTML as text.** The suite's DOM
+  stub builds an element for any id it is asked for, so a tag missing from the
+  real page passes every headless check and breaks only in front of a projector.
+  Two pick checks that belong in the site-agnostic sections sit inside the
+  `meta.beacons` gate for one reason: those run for Ridge Hill, and its count is
+  the tripwire that says nothing else moved.
 
 ---
 
@@ -492,12 +701,18 @@ the tuning panel's reset and the per-species display window, at a cost of 6 KB.
 **The CFC-11 deck**
 
 - **The `game` act.** The seven acts above run; the guess-then-reveal the deck
-  exists for is not built, and every caption in the file is a placeholder.
+  exists for is not built, and every caption in the file is a placeholder. The
+  picks are the machinery that makes it *possible* to run act 5 in the room's
+  order — they are not the game, and the five pick captions are the ones to be
+  most careful with when the real ones are written.
 - ⚠ **The chronology.** The clean day (5 Jul) is *after* the dirty one (26 Jun) and
   the acts still run clean-first, so the date stamp on screen goes backwards
   between `clean-smell` and `dirty`. Survivable in a scaffold, not shippable.
   Fixing it means reordering the acts or picking a clean day before 16 June — not
-  editing captions.
+  editing captions. ⚠ **Still open.** The picks hide the stamp on their own six
+  slides (§8) because five regions are five different days by design; that is a
+  narrow decision about one act and not a licence to hide the date wherever the
+  order is wrong.
 - ⚠ **`record` still crosses the 74-hour join at frame 324**, as does the HFC-23
   deck. The suite has no discontinuity check; adding one would cover all three
   decks at once.
@@ -514,6 +729,26 @@ the tuning panel's reset and the per-species display window, at a cost of 6 KB.
   guess was a rectangle*, which is a strong line about how little was known.
 - **`RELEASES` past `hours: 12` is still Ridge Hill's shape and unmeasured.**
   `measure_seeding.mjs` against this wind field is the outstanding job.
+
+**Pictures**
+
+- ⚠ **`expectImages` is stale for Ridge Hill.** That deck now puts a photograph on
+  `where/1`, and its row in `SITES` still says `false` — so the section announces
+  *"no stop on this deck puts a picture on the stage"* while five checks quietly
+  run on the picture anyway, and the two mount checks are skipped. The per-picture
+  checks are gated on the pictures, not on the flag, which is why nothing went
+  red. One line, and it moves that deck's count by five.
+- ⚠ **Ridge Hill's photographs are filed under `web/img/gsn-cfc11/`.** The folder
+  is named per site and `ridge_hill_mast.jpg`, `ridge_hill_mast_angelina.jpg` and
+  `ridge_hill_cows.jpg` are in the wrong one. Moving them is a rename plus one
+  `src`; nothing derives the path.
+- **`placeholder-mast.svg` is dead.** It was the stand-in that made the machinery
+  demonstrable before there were photographs, and `gosan_station.jpeg` has
+  replaced it on the only stop that used it. `ridge_hill_mast_angelina.jpg` and
+  `ridge_hill_cows.jpg` are unused too — no stop names either.
+- **`posterior_map.png` is 478 KB** for a flat-ramp figure, against 897×831 drawn
+  at essentially 1:1 in the `card`. Preloaded at mount and small beside the site's
+  5.0 MB of rasters, so it has not been squeezed.
 
 **The pipeline**
 

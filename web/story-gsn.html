@@ -39,6 +39,11 @@ if (location.protocol === 'file:') {
 <main class="stage">
   <canvas id="map" aria-label="Map showing where the air at Gosan came from"></canvas>
 
+  <!-- Still pictures a stop asks for. See the note on the same tag in
+       story.html: shared with the other two decks because deck.js looks this id
+       up by name, and empty on every stop that names no `images`. -->
+  <div class="figures" id="figures"></div>
+
   <!-- Progress through the acts. Buttons, so it is navigable without the keys. -->
   <nav class="dots" id="dots" aria-label="Slides"></nav>
 
